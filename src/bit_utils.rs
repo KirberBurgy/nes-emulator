@@ -1,5 +1,9 @@
 use num_traits::PrimInt;
 
+pub const fn binary_bit(bit: usize) -> usize {
+    1 << bit
+}
+
 pub fn bit_set<T: PrimInt>(val: T, bit: usize) -> bool {
     ((val >> bit) & T::one()) != T::zero()
 }
