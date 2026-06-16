@@ -1,14 +1,14 @@
-use crate::{bit_utils::{bit_set, set_bit}, cpu::{AddressingMode, CPU, CPUFlags}};
+use crate::{bit_utils::{bit_set, nth_bit, set_bit}, cpu::{AddressingMode, CPU, CPUFlags}};
 
 #[allow(unused)]
 impl CPU {
     fn set_zn_flags(&mut self, value: u8) {
-        self.p = set_bit(self.p, CPUFlags::Zero as usize,                value == 0 );
-        self.p = set_bit(self.p, CPUFlags::Negative as usize,    bit_set(value,   7));
+        self.set_flag(CPUFlags::Zero, value == 0);
+        self.set_flag(CPUFlags::Negative, bit_set(value, 7));
     }
 
     fn advance(&mut self, mode: AddressingMode) {
-        self.pc += match mode {
+        self.pc = self.pc.wrapping_add(match mode {
             AddressingMode::Implied => 1,
             AddressingMode::Accumulator => 1,
             AddressingMode::Immediate => 2,
@@ -20,9 +20,9 @@ impl CPU {
             AddressingMode::AbsoluteX => 3,
             AddressingMode::AbsoluteY => 3,
             AddressingMode::Indirect => 3,
-            AddressingMode::IndexedIndirect => 3,
-            AddressingMode::IndirectIndexed => 3,
-        }
+            AddressingMode::IndexedIndirect => 2,
+            AddressingMode::IndirectIndexed => 2,
+        });
     }
 
     fn access_cycles(&self, mode: AddressingMode) -> usize {
@@ -81,6 +81,7 @@ impl CPU {
 
         self.a = byte;
         
+        self.set_zn_flags(self.a);
         self.advance(mode);
         self.access_cycles(mode)
     }
@@ -95,6 +96,7 @@ impl CPU {
         let byte = self.get8(mode);
 
         self.x = byte;
+        self.set_zn_flags(self.x);
         self.advance(mode);
         self.access_cycles(mode)
     }
@@ -109,6 +111,7 @@ impl CPU {
         let byte = self.get8(mode);
 
         self.y = byte;
+        self.set_zn_flags(self.y);
         self.advance(mode);
         self.access_cycles(mode)
     }
@@ -154,19 +157,20 @@ impl CPU {
 
     // Arithmetic
     fn adc(&mut self, mode: AddressingMode) -> usize {
-        let addend = self.get8(mode);
+        let value = self.get8(mode);
         let carry_in = self.flag_set(CPUFlags::Carry) as u8;
 
-        let sum1 = self.a.wrapping_add(addend);
-        let (result, carry1) = sum1.overflowing_add(carry_in);
+        let (sum1, carry1) = self.a.overflowing_add(value);
+        let (result, carry2) = sum1.overflowing_add(carry_in);
 
-        self.set_flag(CPUFlags::Carry, carry1);
+        let carry = carry1 || carry2;
 
+        self.set_flag(CPUFlags::Carry, carry);
         self.set_flag(CPUFlags::Zero, result == 0);
 
         self.set_flag(
             CPUFlags::Overflow,
-            bit_set((self.a ^ result) & (addend ^ result), 7),
+            bit_set((self.a ^ result) & (value ^ result), 7),
         );
 
         self.set_flag(CPUFlags::Negative, bit_set(result, 7));
@@ -181,10 +185,12 @@ impl CPU {
         let value = !self.get8(mode);
         let carry_in = self.flag_set(CPUFlags::Carry) as u8;
 
-        let sum1 = self.a.wrapping_add(value);
-        let (result, carry1) = sum1.overflowing_add(carry_in);
+        let (sum1, carry1) = self.a.overflowing_add(value);
+        let (result, carry2) = sum1.overflowing_add(carry_in);
 
-        self.set_flag(CPUFlags::Carry, carry1);
+        let carry = carry1 || carry2;
+
+        self.set_flag(CPUFlags::Carry, carry);
         self.set_flag(CPUFlags::Zero, result == 0);
 
         self.set_flag(
@@ -223,6 +229,7 @@ impl CPU {
     fn inx(&mut self, mode: AddressingMode) -> usize {
         self.x = self.x.wrapping_add(1);
 
+        self.set_zn_flags(self.x);
         self.advance(mode);
         2
     }
@@ -230,6 +237,7 @@ impl CPU {
     fn dex(&mut self, mode: AddressingMode) -> usize {
         self.x = self.x.wrapping_sub(1);
 
+        self.set_zn_flags(self.x);
         self.advance(mode);
         2
     }
@@ -237,6 +245,7 @@ impl CPU {
     fn iny(&mut self, mode: AddressingMode) -> usize {
         self.y = self.y.wrapping_add(1);
 
+        self.set_zn_flags(self.y);
         self.advance(mode);
         2
     }
@@ -244,6 +253,7 @@ impl CPU {
     fn dey(&mut self, mode: AddressingMode) -> usize {
         self.y = self.y.wrapping_sub(1);
 
+        self.set_zn_flags(self.y);
         self.advance(mode);
         2
     }
@@ -453,7 +463,7 @@ impl CPU {
 
         let jmp_target = self.get_address(mode);
         self.pc = jmp_target as u16;
-
+        
         6
     }
 
@@ -467,7 +477,8 @@ impl CPU {
     fn brk(&mut self, mode: AddressingMode) -> usize {
         let ret_target = self.pc + 2;
         self.push16(ret_target);
-        self.push8(self.p);
+
+        self.push8(self.p | nth_bit::<u8>(4) | nth_bit::<u8>(5));
 
         self.set_flag(CPUFlags::InterruptDisable, true);
         self.jump_to_interrupt_handler();
@@ -476,7 +487,7 @@ impl CPU {
     }
 
     fn rti(&mut self, mode: AddressingMode) -> usize {
-        self.p = self.pop8();
+        self.p = self.pop8() & !nth_bit::<u8>(4) | nth_bit::<u8>(5);
         self.pc = self.pop16();
 
         6
@@ -499,14 +510,14 @@ impl CPU {
     }
 
     fn php(&mut self, mode: AddressingMode) -> usize {
-        self.push8(self.p);
+        self.push8(self.p | nth_bit::<u8>(4));
         self.advance(mode);
 
         3
     }
 
     fn plp(&mut self, mode: AddressingMode) -> usize {
-        self.p = self.pop8();
+        self.p = self.pop8() & !nth_bit::<u8>(4) | nth_bit::<u8>(5);
         self.advance(mode);
 
         4
@@ -521,6 +532,7 @@ impl CPU {
 
     fn tsx(&mut self, mode: AddressingMode) -> usize {
         self.x = self.sp;
+        self.set_zn_flags(self.x);
         self.advance(mode);
 
         2
@@ -582,8 +594,8 @@ impl CPU {
         2
     }
 
-    fn execute(&mut self, opcode: u8) -> usize {
-        match opcode {
+    fn execute(&mut self, opcode: u8) -> Option<usize> {
+        Some(match opcode {
             0x69 => self.adc(AddressingMode::Immediate),
             0x65 => self.adc(AddressingMode::ZeroPage),
             0x75 => self.adc(AddressingMode::ZeroPageX),
@@ -774,11 +786,19 @@ impl CPU {
 
             0x98 => self.tya(AddressingMode::Implied),
 
-            _ => panic!("Unknown instruction!")
-        }
+            _ => return None
+        })
     }
 
-    pub fn step(&mut self) -> usize {
-        self.execute(self.ram[self.pc as usize])
+    pub fn step(&mut self) -> bool {
+        let opcode = self.ram[self.pc as usize];
+
+        if let Some(cycles) = self.execute(opcode) { 
+            self.cycles += cycles;
+            
+            return true;
+        }
+
+        false
     }
 }

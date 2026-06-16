@@ -10,8 +10,8 @@ pub enum CPUFlags {
     Decimal             = 3,
     //                  B
     //                  1
-    Overflow            = 4,
-    Negative            = 5,
+    Overflow            = 6,
+    Negative            = 7,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -55,6 +55,8 @@ pub struct CPU {
     pub y:      u8,
 
     pub ram:    Box<[u8; 0x10000]>,
+    
+    pub cycles: usize
 }
 
 impl CPU {
@@ -67,6 +69,7 @@ impl CPU {
             a:      0,
             x:      0,
             y:      0,
+            cycles: 0,
             ram: Box::new([0; 0x10000]),
         }
     }
@@ -80,20 +83,12 @@ impl CPU {
     }
 
     pub fn push8(&mut self, b: u8) {
-        if self.sp == 0x00 {
-            panic!("Tried to push onto a full stack.");
-        }
-
         self.ram[0x100 + self.sp as usize] = b;
-        self.sp -= 1;
+        self.sp = self.sp.wrapping_sub(1);
     }
 
     pub fn pop8(&mut self) -> u8 {
-        if self.sp == 0xFF {
-            panic!("Tried to pop an empty stack.");
-        }
-
-        self.sp += 1;
+        self.sp = self.sp.wrapping_add(1);
         self.ram[0x100 + self.sp as usize]
     }
 
@@ -121,44 +116,44 @@ impl CPU {
     pub(crate) fn get_address(&self, mode: AddressingMode) -> usize {  
         match mode {
             AddressingMode::ZeroPage => {
-                self.ram[self.pc as usize + 1] as usize
+                self.ram[self.pc.wrapping_add(1) as usize] as usize
             }
 
             AddressingMode::ZeroPageX => {
                 self.x
-                    .wrapping_add(self.ram[self.pc as usize + 1])
+                    .wrapping_add(self.ram[self.pc.wrapping_add(1) as usize])
                     as usize
             }
 
             AddressingMode::ZeroPageY => {
                 self.y
-                    .wrapping_add(self.ram[self.pc as usize + 1])
+                    .wrapping_add(self.ram[self.pc.wrapping_add(1) as usize])
                     as usize
             }
 
             AddressingMode::Absolute => {
-                let lsb = self.ram[self.pc as usize + 1];
-                let msb = self.ram[self.pc as usize + 2];
+                let lsb = self.ram[self.pc.wrapping_add(1) as usize];
+                let msb = self.ram[self.pc.wrapping_add(2) as usize];
 
                 address_from_bytes(lsb, msb) as usize
             }
 
             AddressingMode::AbsoluteX => {
-                let lsb = self.ram[self.pc as usize + 1];
-                let msb = self.ram[self.pc as usize + 2];
+                let lsb = self.ram[self.pc.wrapping_add(1) as usize];
+                let msb = self.ram[self.pc.wrapping_add(2) as usize];
 
-                (address_from_bytes(lsb, msb) + self.x as u16) as usize
+                address_from_bytes(lsb, msb).wrapping_add(self.x as u16) as usize
             }
 
             AddressingMode::AbsoluteY => {
-                let lsb = self.ram[self.pc as usize + 1];
-                let msb = self.ram[self.pc as usize + 2];
+                let lsb = self.ram[self.pc.wrapping_add(1) as usize];
+                let msb = self.ram[self.pc.wrapping_add(2) as usize];
 
-                (address_from_bytes(lsb, msb) + self.y as u16) as usize
+                address_from_bytes(lsb, msb).wrapping_add(self.y as u16) as usize
             }
 
             AddressingMode::Relative  => {
-                let offset = self.ram[self.pc as usize + 1] as i8;
+                let offset = self.ram[self.pc.wrapping_add(1) as usize] as i8;
 
                 self.pc
                     .wrapping_add(2)
@@ -166,20 +161,25 @@ impl CPU {
             }
 
             AddressingMode::Indirect => {
-                let ptr_lsb = self.ram[self.pc as usize + 1];
-                let ptr_msb = self.ram[self.pc as usize + 2];
+                let ptr_lsb = self.ram[self.pc.wrapping_add(1) as usize];
+                let ptr_msb = self.ram[self.pc.wrapping_add(2) as usize];
 
-                let ptr = address_from_bytes(ptr_lsb, ptr_msb) as usize;
+                let ptr = address_from_bytes(ptr_lsb, ptr_msb);
 
-                let lsb = self.ram[ptr];
-                let msb = self.ram[ptr + 1];
+                let lsb = self.ram[ptr as usize];
+
+                let msb_addr =
+                    (ptr & 0xFF00) |
+                    ((ptr.wrapping_add(1)) & 0x00FF);
+
+                let msb = self.ram[msb_addr as usize];
 
                 address_from_bytes(lsb, msb) as usize
             }
 
             AddressingMode::IndexedIndirect => {
                 let ptr = self.x
-                    .wrapping_add(self.ram[self.pc as usize + 1]);
+                    .wrapping_add(self.ram[self.pc.wrapping_add(1) as usize]);
 
                 let lsb = self.ram[ptr as usize];
                 let msb = self.ram[ptr.wrapping_add(1) as usize];
@@ -188,12 +188,12 @@ impl CPU {
             }
 
             AddressingMode::IndirectIndexed => {
-                let ptr = self.ram[self.pc as usize + 1];
+                let ptr = self.ram[self.pc.wrapping_add(1) as usize];
 
                 let lsb = self.ram[ptr as usize];
                 let msb = self.ram[ptr.wrapping_add(1) as usize];
 
-                address_from_bytes(lsb, msb) as usize + self.y as usize
+                address_from_bytes(lsb, msb).wrapping_add(self.y as u16) as usize
             }
 
             _ => unreachable!("mode has no address"),
@@ -203,8 +203,8 @@ impl CPU {
     pub(crate) fn page_crossed(&self, mode: AddressingMode) -> bool {
         match mode {
             AddressingMode::AbsoluteX       => {
-                let lsb = self.ram[self.pc as usize + 1];
-                let msb = self.ram[self.pc as usize + 2];
+                let lsb = self.ram[self.pc.wrapping_add(1) as usize];
+                let msb = self.ram[self.pc.wrapping_add(2) as usize];
 
                 let address_before_add = address_from_bytes(lsb, msb);
 
@@ -215,8 +215,8 @@ impl CPU {
             }
 
             AddressingMode::AbsoluteY       => {
-                let lsb = self.ram[self.pc as usize + 1];
-                let msb = self.ram[self.pc as usize + 2];
+                let lsb = self.ram[self.pc.wrapping_add(1) as usize];
+                let msb = self.ram[self.pc.wrapping_add(2) as usize];
 
                 let address_before_add = address_from_bytes(lsb, msb);
 
@@ -227,7 +227,7 @@ impl CPU {
             },
 
             AddressingMode::IndirectIndexed => {
-                let ptr = self.ram[self.pc as usize + 1];
+                let ptr = self.ram[self.pc.wrapping_add(1) as usize];
 
                 let lsb = self.ram[ptr as usize];
                 let msb = self.ram[ptr.wrapping_add(1) as usize];
@@ -241,7 +241,7 @@ impl CPU {
             },
 
             AddressingMode::Relative => {
-                let offset = self.ram[self.pc as usize + 1];
+                let offset = self.ram[self.pc.wrapping_add(1) as usize];
 
                 let base = self.pc.wrapping_add(2);
                 let target = base.wrapping_add_signed(offset as i16);
@@ -264,7 +264,7 @@ impl CPU {
 
             AddressingMode::Immediate |
             AddressingMode::Relative => {
-                self.ram[self.pc as usize + 1]
+                self.ram[self.pc.wrapping_add(1) as usize]
             }
 
             _ => {
@@ -293,6 +293,6 @@ impl CPU {
     }
 
     pub fn dbg(&self) {
-        println!("PC: {:X}\nP:  {:b}\nSP: {}\nA:  {}\nX:  {}\nY:  {}", self.pc, self.p, self.sp, self.a, self.x, self.y);
+        println!("PC: {:X}\n    NV  DIZC\nP:  {:08b}\nSP: {}\nA:  {}\nX:  {}\nY:  {}", self.pc, self.p, self.sp, self.a, self.x, self.y);
     }
 }

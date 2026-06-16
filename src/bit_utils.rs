@@ -6,6 +6,10 @@ pub const fn address_from_bytes(lsb: u8, msb: u8) -> u16 {
     ((msb as u16) << 8) | lsb as u16
 }
 
+pub fn nth_bit<T: PrimInt>(bit: usize) -> T {
+    T::one() << bit
+}
+
 pub fn bit_set<T: PrimInt>(val: T, bit: usize) -> bool {
     ((val >> bit) & T::one()) != T::zero()
 }
