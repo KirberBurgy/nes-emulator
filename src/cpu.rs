@@ -1,6 +1,7 @@
-use crate::bit_utils::{address_from_bytes};
+use crate::bit_utils::{address_from_bytes, bit_set, get_bits, set_bit};
 
 
+#[derive(Copy, Clone, Debug)]
 #[repr(usize)]
 pub enum CPUFlags {
     Carry               = 0,
@@ -13,8 +14,9 @@ pub enum CPUFlags {
     Negative            = 5,
 }
 
-enum AddressingMode {
-    // Implicit,
+#[derive(Copy, Clone, Debug)]
+pub enum AddressingMode {
+    Implied,
 
     Accumulator,
 
@@ -28,11 +30,13 @@ enum AddressingMode {
 
     Relative,
 
-    // Absolute,
+    Absolute,
 
     AbsoluteX,
 
     AbsoluteY,
+
+    Indirect,
 
     IndexedIndirect,
 
@@ -59,12 +63,20 @@ impl CPU {
         {
             pc:     0,
             sp:     0xFF,
-            p:      0,
+            p:      0b00110000,
             a:      0,
             x:      0,
             y:      0,
             ram: Box::new([0; 0x8000]),
         }
+    }
+
+    pub fn set_flag(&mut self, flag: CPUFlags, to: bool) {
+        self.p = set_bit(self.p, flag as usize, to)
+    }
+
+    pub fn flag_set(&self, flag: CPUFlags) -> bool {
+        bit_set(self.p, flag as usize)
     }
 
     pub fn push8(&mut self, b: u8) {
@@ -98,8 +110,15 @@ impl CPU {
         (hi << 8) | lo
     }
 
+    
+    pub fn jump_to_interrupt_handler(&mut self) {
+        let lsb = self.ram[0xFFFE];
+        let msb = self.ram[0xFFFF];
 
-    fn get_address(&self, mode: AddressingMode) -> usize {  
+        self.pc = address_from_bytes(lsb, msb);
+    }
+
+    pub(crate) fn get_address(&self, mode: AddressingMode) -> usize {  
         match mode {
             AddressingMode::ZeroPage => {
                 self.ram[self.pc as usize + 1] as usize
@@ -117,6 +136,13 @@ impl CPU {
                     as usize
             }
 
+            AddressingMode::Absolute => {
+                let lsb = self.ram[self.pc as usize + 1];
+                let msb = self.ram[self.pc as usize + 2];
+
+                address_from_bytes(lsb, msb) as usize
+            }
+
             AddressingMode::AbsoluteX => {
                 let lsb = self.ram[self.pc as usize + 1];
                 let msb = self.ram[self.pc as usize + 2];
@@ -129,6 +155,26 @@ impl CPU {
                 let msb = self.ram[self.pc as usize + 2];
 
                 (address_from_bytes(lsb, msb) + self.y as u16) as usize
+            }
+
+            AddressingMode::Relative  => {
+                let offset = self.ram[self.pc as usize + 1] as i8;
+
+                self.pc
+                    .wrapping_add(2)
+                    .wrapping_add_signed(offset as i16) as usize
+            }
+
+            AddressingMode::Indirect => {
+                let ptr_lsb = self.ram[self.pc as usize + 1];
+                let ptr_msb = self.ram[self.pc as usize + 2];
+
+                let ptr = address_from_bytes(ptr_lsb, ptr_msb) as usize;
+
+                let lsb = self.ram[ptr];
+                let msb = self.ram[ptr + 1];
+
+                address_from_bytes(lsb, msb) as usize
             }
 
             AddressingMode::IndexedIndirect => {
@@ -154,8 +200,65 @@ impl CPU {
         }
     }
 
+    pub(crate) fn page_crossed(&self, mode: AddressingMode) -> bool {
+        match mode {
+            AddressingMode::AbsoluteX       => {
+                let lsb = self.ram[self.pc as usize + 1];
+                let msb = self.ram[self.pc as usize + 2];
 
-    fn get8(&self, mode: AddressingMode) -> u8 {
+                let address_before_add = address_from_bytes(lsb, msb);
+
+                let page_crossed =
+                    get_bits(address_before_add, 0..8) + self.x as u16 > 0xFF;
+
+                page_crossed
+            }
+
+            AddressingMode::AbsoluteY       => {
+                let lsb = self.ram[self.pc as usize + 1];
+                let msb = self.ram[self.pc as usize + 2];
+
+                let address_before_add = address_from_bytes(lsb, msb);
+
+                let page_crossed =
+                    get_bits(address_before_add, 0..8) + self.y as u16 > 0xFF;
+
+                page_crossed
+            },
+
+            AddressingMode::IndirectIndexed => {
+                let ptr = self.ram[self.pc as usize + 1];
+
+                let lsb = self.ram[ptr as usize];
+                let msb = self.ram[ptr.wrapping_add(1) as usize];
+
+                let address_before_add = address_from_bytes(lsb, msb);
+
+                let page_crossed =
+                    get_bits(address_before_add, 0..8) + self.y as u16 > 0xFF;
+
+                page_crossed
+            },
+
+            AddressingMode::Relative => {
+                let offset = self.ram[self.pc as usize + 1];
+
+                let base = self.pc.wrapping_add(2);
+                let target = base.wrapping_add_signed(offset as i16);
+
+                let page_crossed = 
+                    get_bits(base,   8..16) !=
+                    get_bits(target, 8..16);
+
+                page_crossed
+            },
+
+            _ => false
+        }
+    }
+
+
+    pub(crate) fn get8(&self, mode: AddressingMode) -> u8 {
         match mode {
             AddressingMode::Accumulator => self.a,
 
@@ -171,7 +274,7 @@ impl CPU {
         }
     }
 
-    fn set8(&mut self, mode: AddressingMode, value: u8) {
+    pub(crate) fn set8(&mut self, mode: AddressingMode, value: u8) {
         match mode {
             AddressingMode::Accumulator => {
                 self.a = value;

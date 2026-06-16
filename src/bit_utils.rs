@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use num_traits::PrimInt;
 
 pub const fn address_from_bytes(lsb: u8, msb: u8) -> u16 {
@@ -17,4 +19,11 @@ pub fn set_bit<T: PrimInt>(val: T, bit: usize, to: bool) -> T {
     else {
         val & !b
     }
+}
+
+pub fn get_bits<T: PrimInt>(val: T, range: Range<usize>) -> T {
+    let width = range.end - range.start;
+    let mask = (T::one() << width) - T::one();
+
+    (val >> range.start) & mask
 }

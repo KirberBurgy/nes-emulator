@@ -4,6 +4,8 @@ pub mod bit_utils;
 
 pub mod cpu;
 
+pub mod instructions;
+
 fn main() {
     let x = 0b1010101010;
 
