@@ -1,4 +1,7 @@
-use crate::{bit_utils::{bit_set, nth_bit, set_bit}, cpu::{AddressingMode, CPU, CPUFlags}};
+use crate::{
+    bit_utils::{bit_set, nth_bit, set_bit},
+    cpu::{AddressingMode, CPU, CPUFlags},
+};
 
 #[allow(unused)]
 impl CPU {
@@ -27,20 +30,20 @@ impl CPU {
 
     fn access_cycles(&self, mode: AddressingMode) -> usize {
         match mode {
-            AddressingMode::Immediate   => 2,
+            AddressingMode::Immediate => 2,
 
-            AddressingMode::ZeroPage    => 3,
-            AddressingMode::ZeroPageX   => 4,
-            AddressingMode::ZeroPageY   => 4,
+            AddressingMode::ZeroPage => 3,
+            AddressingMode::ZeroPageX => 4,
+            AddressingMode::ZeroPageY => 4,
 
-            AddressingMode::Absolute    => 4,
-            AddressingMode::AbsoluteX   => 4 + (if self.page_crossed(mode) { 1 } else { 0 }),
-            AddressingMode::AbsoluteY   => 4 + (if self.page_crossed(mode) { 1 } else { 0 }),
+            AddressingMode::Absolute => 4,
+            AddressingMode::AbsoluteX => 4 + (if self.page_crossed(mode) { 1 } else { 0 }),
+            AddressingMode::AbsoluteY => 4 + (if self.page_crossed(mode) { 1 } else { 0 }),
 
             AddressingMode::IndexedIndirect => 6,
             AddressingMode::IndirectIndexed => 5 + (if self.page_crossed(mode) { 1 } else { 0 }),
 
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -48,30 +51,30 @@ impl CPU {
         match mode {
             AddressingMode::Accumulator => 2,
 
-            AddressingMode::ZeroPage    => 5,
-            AddressingMode::ZeroPageX   => 6,
+            AddressingMode::ZeroPage => 5,
+            AddressingMode::ZeroPageX => 6,
 
-            AddressingMode::Absolute    => 6,
-            AddressingMode::AbsoluteX   => 7,
+            AddressingMode::Absolute => 6,
+            AddressingMode::AbsoluteX => 7,
 
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
     fn store_cycles(&self, mode: AddressingMode) -> usize {
         match mode {
-            AddressingMode::ZeroPage    => 3,
-            AddressingMode::ZeroPageX   => 4,
-            AddressingMode::ZeroPageY   => 4,
+            AddressingMode::ZeroPage => 3,
+            AddressingMode::ZeroPageX => 4,
+            AddressingMode::ZeroPageY => 4,
 
-            AddressingMode::Absolute    => 4,
-            AddressingMode::AbsoluteX   => 5,
-            AddressingMode::AbsoluteY   => 5,
+            AddressingMode::Absolute => 4,
+            AddressingMode::AbsoluteX => 5,
+            AddressingMode::AbsoluteY => 5,
 
             AddressingMode::IndexedIndirect => 6,
             AddressingMode::IndirectIndexed => 6,
 
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -80,16 +83,18 @@ impl CPU {
         let byte = self.get8(mode);
 
         self.a = byte;
-        
+
         self.set_zn_flags(self.a);
+        let cycles = self.access_cycles(mode);
         self.advance(mode);
-        self.access_cycles(mode)
+        cycles
     }
 
     fn sta(&mut self, mode: AddressingMode) -> usize {
         self.set8(mode, self.a);
+        let cycles = self.store_cycles(mode);
         self.advance(mode);
-        self.store_cycles(mode)
+        cycles
     }
 
     fn ldx(&mut self, mode: AddressingMode) -> usize {
@@ -97,14 +102,16 @@ impl CPU {
 
         self.x = byte;
         self.set_zn_flags(self.x);
+        let cycles = self.access_cycles(mode);
         self.advance(mode);
-        self.access_cycles(mode)
+        cycles
     }
 
     fn stx(&mut self, mode: AddressingMode) -> usize {
         self.set8(mode, self.x);
+        let cycles = self.store_cycles(mode);
         self.advance(mode);
-        self.store_cycles(mode)
+        cycles
     }
 
     fn ldy(&mut self, mode: AddressingMode) -> usize {
@@ -112,14 +119,16 @@ impl CPU {
 
         self.y = byte;
         self.set_zn_flags(self.y);
+        let cycles = self.access_cycles(mode);
         self.advance(mode);
-        self.access_cycles(mode)
+        cycles
     }
 
     fn sty(&mut self, mode: AddressingMode) -> usize {
         self.set8(mode, self.y);
+        let cycles = self.store_cycles(mode);
         self.advance(mode);
-        self.store_cycles(mode)
+        cycles
     }
 
     // Transfer
@@ -176,9 +185,9 @@ impl CPU {
         self.set_flag(CPUFlags::Negative, bit_set(result, 7));
 
         self.a = result;
-
+        let cycles = self.access_cycles(mode);
         self.advance(mode);
-        self.access_cycles(mode)
+        cycles
     }
 
     fn sbc(&mut self, mode: AddressingMode) -> usize {
@@ -201,9 +210,9 @@ impl CPU {
         self.set_flag(CPUFlags::Negative, bit_set(result, 7));
 
         self.a = result;
-
+        let cycles = self.access_cycles(mode);
         self.advance(mode);
-        self.access_cycles(mode)
+        cycles
     }
 
     fn inc(&mut self, mode: AddressingMode) -> usize {
@@ -212,8 +221,9 @@ impl CPU {
 
         self.set_zn_flags(byte);
 
+        let cycles = self.arithmetic_cycles(mode);
         self.advance(mode);
-        self.arithmetic_cycles(mode)
+        cycles
     }
 
     fn dec(&mut self, mode: AddressingMode) -> usize {
@@ -222,8 +232,9 @@ impl CPU {
 
         self.set_zn_flags(byte);
 
+        let cycles = self.arithmetic_cycles(mode);
         self.advance(mode);
-        self.arithmetic_cycles(mode)
+        cycles
     }
 
     fn inx(&mut self, mode: AddressingMode) -> usize {
@@ -268,8 +279,9 @@ impl CPU {
         self.set_zn_flags(result);
         self.set8(mode, result);
 
+        let cycles = self.arithmetic_cycles(mode);
         self.advance(mode);
-        self.arithmetic_cycles(mode)
+        cycles
     }
 
     fn lsr(&mut self, mode: AddressingMode) -> usize {
@@ -281,8 +293,9 @@ impl CPU {
         self.set_zn_flags(result);
         self.set8(mode, result);
 
+        let cycles = self.arithmetic_cycles(mode);
         self.advance(mode);
-        self.arithmetic_cycles(mode)
+        cycles
     }
 
     fn rol(&mut self, mode: AddressingMode) -> usize {
@@ -297,8 +310,9 @@ impl CPU {
         self.set_zn_flags(result);
         self.set8(mode, result);
 
+        let cycles = self.arithmetic_cycles(mode);
         self.advance(mode);
-        self.arithmetic_cycles(mode)
+        cycles
     }
 
     fn ror(&mut self, mode: AddressingMode) -> usize {
@@ -313,8 +327,9 @@ impl CPU {
         self.set_zn_flags(result);
         self.set8(mode, result);
 
+        let cycles = self.arithmetic_cycles(mode);
         self.advance(mode);
-        self.arithmetic_cycles(mode)
+        cycles
     }
 
     // Bitwise
@@ -323,8 +338,9 @@ impl CPU {
         self.a &= value;
 
         self.set_zn_flags(self.a);
+        let cycles = self.access_cycles(mode);
         self.advance(mode);
-        self.access_cycles(mode)
+        cycles
     }
 
     fn ora(&mut self, mode: AddressingMode) -> usize {
@@ -332,8 +348,9 @@ impl CPU {
         self.a |= value;
 
         self.set_zn_flags(self.a);
+        let cycles = self.access_cycles(mode);
         self.advance(mode);
-        self.access_cycles(mode)
+        cycles
     }
 
     fn eor(&mut self, mode: AddressingMode) -> usize {
@@ -341,8 +358,9 @@ impl CPU {
         self.a ^= value;
 
         self.set_zn_flags(self.a);
+        let cycles = self.access_cycles(mode);
         self.advance(mode);
-        self.access_cycles(mode)
+        cycles
     }
 
     fn bit(&mut self, mode: AddressingMode) -> usize {
@@ -357,7 +375,7 @@ impl CPU {
         match mode {
             AddressingMode::ZeroPage => 3,
             AddressingMode::Absolute => 4,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -366,33 +384,33 @@ impl CPU {
         let value = self.get8(mode);
 
         self.set_flag(CPUFlags::Carry, self.a >= value);
-        self.set_flag(CPUFlags::Zero,  self.a == value);
+        self.set_flag(CPUFlags::Zero, self.a == value);
         self.set_flag(CPUFlags::Negative, bit_set(self.a.wrapping_sub(value), 7));
-
+        let cycles = self.access_cycles(mode);
         self.advance(mode);
-        self.access_cycles(mode)
+        cycles
     }
 
     fn cpx(&mut self, mode: AddressingMode) -> usize {
         let value = self.get8(mode);
 
         self.set_flag(CPUFlags::Carry, self.x >= value);
-        self.set_flag(CPUFlags::Zero,  self.x == value);
+        self.set_flag(CPUFlags::Zero, self.x == value);
         self.set_flag(CPUFlags::Negative, bit_set(self.x.wrapping_sub(value), 7));
-        
+        let cycles = self.access_cycles(mode);
         self.advance(mode);
-        self.access_cycles(mode)
+        cycles
     }
 
     fn cpy(&mut self, mode: AddressingMode) -> usize {
         let value = self.get8(mode);
 
         self.set_flag(CPUFlags::Carry, self.y >= value);
-        self.set_flag(CPUFlags::Zero,  self.y == value);
+        self.set_flag(CPUFlags::Zero, self.y == value);
         self.set_flag(CPUFlags::Negative, bit_set(self.y.wrapping_sub(value), 7));
-        
+        let cycles = self.access_cycles(mode);
         self.advance(mode);
-        self.access_cycles(mode)
+        cycles
     }
 
     fn branch(&mut self, mode: AddressingMode, b: bool) -> usize {
@@ -403,10 +421,9 @@ impl CPU {
             self.pc = branch_position as u16;
 
             3 + if crossed_page { 1 } else { 0 }
-        }
-        else {
+        } else {
             self.advance(mode);
-            
+
             2
         }
     }
@@ -453,7 +470,7 @@ impl CPU {
             AddressingMode::Absolute => 3,
             AddressingMode::Indirect => 5,
 
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -463,7 +480,7 @@ impl CPU {
 
         let jmp_target = self.get_address(mode);
         self.pc = jmp_target as u16;
-        
+
         6
     }
 
@@ -566,7 +583,7 @@ impl CPU {
         2
     }
 
-    fn cld(&mut self, mode: AddressingMode) -> usize  {
+    fn cld(&mut self, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::Decimal, false);
         self.advance(mode);
 
@@ -647,7 +664,7 @@ impl CPU {
             0xD9 => self.cmp(AddressingMode::AbsoluteY),
             0xC1 => self.cmp(AddressingMode::IndexedIndirect),
             0xD1 => self.cmp(AddressingMode::IndirectIndexed),
-            
+
             0xE0 => self.cpx(AddressingMode::Immediate),
             0xE4 => self.cpx(AddressingMode::ZeroPage),
             0xEC => self.cpx(AddressingMode::Absolute),
@@ -655,7 +672,7 @@ impl CPU {
             0xC0 => self.cpy(AddressingMode::Immediate),
             0xC4 => self.cpy(AddressingMode::ZeroPage),
             0xCC => self.cpy(AddressingMode::Absolute),
-            
+
             0xE6 => self.inc(AddressingMode::ZeroPage),
             0xF6 => self.inc(AddressingMode::ZeroPageX),
             0xEE => self.inc(AddressingMode::Absolute),
@@ -683,7 +700,7 @@ impl CPU {
 
             0x4C => self.jmp(AddressingMode::Absolute),
             0x6C => self.jmp(AddressingMode::Indirect),
-            
+
             0x20 => self.jsr(AddressingMode::Absolute),
 
             0xA9 => self.lda(AddressingMode::Immediate),
@@ -700,7 +717,7 @@ impl CPU {
             0xB6 => self.ldx(AddressingMode::ZeroPageY),
             0xAE => self.ldx(AddressingMode::Absolute),
             0xBE => self.ldx(AddressingMode::AbsoluteY),
-            
+
             0xA0 => self.ldy(AddressingMode::Immediate),
             0xA4 => self.ldy(AddressingMode::ZeroPage),
             0xB4 => self.ldy(AddressingMode::ZeroPageX),
@@ -734,7 +751,7 @@ impl CPU {
             0x36 => self.rol(AddressingMode::ZeroPageX),
             0x2E => self.rol(AddressingMode::Absolute),
             0x3E => self.rol(AddressingMode::AbsoluteX),
-            
+
             0x6A => self.ror(AddressingMode::Accumulator),
             0x66 => self.ror(AddressingMode::ZeroPage),
             0x76 => self.ror(AddressingMode::ZeroPageX),
@@ -765,11 +782,11 @@ impl CPU {
             0x99 => self.sta(AddressingMode::AbsoluteY),
             0x81 => self.sta(AddressingMode::IndexedIndirect),
             0x91 => self.sta(AddressingMode::IndirectIndexed),
-            
+
             0x86 => self.stx(AddressingMode::ZeroPage),
             0x96 => self.stx(AddressingMode::ZeroPageY),
             0x8E => self.stx(AddressingMode::Absolute),
-            
+
             0x84 => self.sty(AddressingMode::ZeroPage),
             0x94 => self.sty(AddressingMode::ZeroPageX),
             0x8C => self.sty(AddressingMode::Absolute),
@@ -779,23 +796,23 @@ impl CPU {
             0xA8 => self.tay(AddressingMode::Implied),
 
             0xBA => self.tsx(AddressingMode::Implied),
-            
+
             0x8A => self.txa(AddressingMode::Implied),
 
             0x9A => self.txs(AddressingMode::Implied),
 
             0x98 => self.tya(AddressingMode::Implied),
 
-            _ => return None
+            _ => return None,
         })
     }
 
     pub fn step(&mut self) -> bool {
         let opcode = self.ram[self.pc as usize];
 
-        if let Some(cycles) = self.execute(opcode) { 
+        if let Some(cycles) = self.execute(opcode) {
             self.cycles += cycles;
-            
+
             return true;
         }
 

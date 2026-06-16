@@ -31,6 +31,9 @@ fn run_test(name: &str) {
         cpu.x   = initial["x"].as_u64().unwrap() as u8;
         cpu.y   = initial["y"].as_u64().unwrap() as u8;
         
+        // Reset your CPU's internal cycle counter before running the instruction
+        cpu.cycles = 0;
+
         let ram = initial["ram"].as_array().unwrap();
         for set in ram {
             let idx = set[0].as_u64().unwrap() as usize;
@@ -48,6 +51,7 @@ fn run_test(name: &str) {
         let mut test_failed = false;
         let mut errors = Vec::new();
 
+        // 1. Verify Registers
         let mut check_reg = |actual: u64, expected: u64, name: &str| {
             if actual != expected {
                 test_failed = true;
@@ -62,6 +66,17 @@ fn run_test(name: &str) {
         check_reg(cpu.x as u64, end["x"].as_u64().unwrap(), "X Register");
         check_reg(cpu.y as u64, end["y"].as_u64().unwrap(), "Y Register");
 
+        // 2. Verify Cycles (Timing)
+        let expected_cycles = test["cycles"].as_array().unwrap().len();
+        if cpu.cycles != expected_cycles {
+            test_failed = true;
+            errors.push(format!(
+                "  Cycle count mismatch -> Got: {}, Expected: {}", 
+                cpu.cycles, expected_cycles
+            ));
+        }
+
+        // 3. Verify RAM State
         let end_ram = end["ram"].as_array().unwrap();
         for set in end_ram {
             let ram_idx = set[0].as_u64().unwrap() as usize;
@@ -93,17 +108,16 @@ fn run_test(name: &str) {
     println!("Total Executed: {}", total_tests);
     println!("Passed: 🟩 {}", passed);
     println!("Failed: 🟥 {}", failed);
-
+    
     if failed > 0 {
-        panic!();
+        panic!("{} test(s) failed in suite '{}'.", failed, name);
     }
 }
 
 fn main() {
-    for i in 0x00..0xFF {
+    for i in 0x00..=0xFF {
         println!("Instruction {:02x}", i);
         
         run_test(&format!("tests/single_step/{:02x}.json", i));
     }
-    
 }

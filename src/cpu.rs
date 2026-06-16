@@ -241,7 +241,7 @@ impl CPU {
             },
 
             AddressingMode::Relative => {
-                let offset = self.ram[self.pc.wrapping_add(1) as usize];
+                let offset = self.ram[self.pc.wrapping_add(1) as usize] as i8;
 
                 let base = self.pc.wrapping_add(2);
                 let target = base.wrapping_add_signed(offset as i16);

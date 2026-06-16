@@ -3,7 +3,7 @@ use std::ops::Range;
 use num_traits::PrimInt;
 
 pub const fn address_from_bytes(lsb: u8, msb: u8) -> u16 {
-    ((msb as u16) << 8) | lsb as u16
+    u16::from_le_bytes([lsb, msb])
 }
 
 pub fn nth_bit<T: PrimInt>(bit: usize) -> T {
