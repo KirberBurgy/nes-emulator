@@ -54,7 +54,7 @@ pub struct CPU {
     pub x:      u8,
     pub y:      u8,
 
-    pub ram:    Box<[u8; 0x8000]>,
+    pub ram:    Box<[u8; 0x10000]>,
 }
 
 impl CPU {
@@ -67,7 +67,7 @@ impl CPU {
             a:      0,
             x:      0,
             y:      0,
-            ram: Box::new([0; 0x8000]),
+            ram: Box::new([0; 0x10000]),
         }
     }
 
@@ -290,5 +290,9 @@ impl CPU {
                 self.ram[addr] = value;
             }
         }
+    }
+
+    pub fn dbg(&self) {
+        println!("PC: {:X}\nP:  {:b}\nSP: {}\nA:  {}\nX:  {}\nY:  {}", self.pc, self.p, self.sp, self.a, self.x, self.y);
     }
 }

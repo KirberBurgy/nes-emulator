@@ -7,6 +7,24 @@ impl CPU {
         self.p = set_bit(self.p, CPUFlags::Negative as usize,    bit_set(value,   7));
     }
 
+    fn advance(&mut self, mode: AddressingMode) {
+        self.pc += match mode {
+            AddressingMode::Implied => 1,
+            AddressingMode::Accumulator => 1,
+            AddressingMode::Immediate => 2,
+            AddressingMode::ZeroPage => 2,
+            AddressingMode::ZeroPageX => 2,
+            AddressingMode::ZeroPageY => 2,
+            AddressingMode::Relative => 2,
+            AddressingMode::Absolute => 3,
+            AddressingMode::AbsoluteX => 3,
+            AddressingMode::AbsoluteY => 3,
+            AddressingMode::Indirect => 3,
+            AddressingMode::IndexedIndirect => 3,
+            AddressingMode::IndirectIndexed => 3,
+        }
+    }
+
     fn access_cycles(&self, mode: AddressingMode) -> usize {
         match mode {
             AddressingMode::Immediate   => 2,
@@ -62,11 +80,14 @@ impl CPU {
         let byte = self.get8(mode);
 
         self.a = byte;
+        
+        self.advance(mode);
         self.access_cycles(mode)
     }
 
     fn sta(&mut self, mode: AddressingMode) -> usize {
         self.set8(mode, self.a);
+        self.advance(mode);
         self.store_cycles(mode)
     }
 
@@ -74,11 +95,13 @@ impl CPU {
         let byte = self.get8(mode);
 
         self.x = byte;
+        self.advance(mode);
         self.access_cycles(mode)
     }
 
     fn stx(&mut self, mode: AddressingMode) -> usize {
         self.set8(mode, self.x);
+        self.advance(mode);
         self.store_cycles(mode)
     }
 
@@ -86,39 +109,45 @@ impl CPU {
         let byte = self.get8(mode);
 
         self.y = byte;
+        self.advance(mode);
         self.access_cycles(mode)
     }
 
     fn sty(&mut self, mode: AddressingMode) -> usize {
         self.set8(mode, self.y);
+        self.advance(mode);
         self.store_cycles(mode)
     }
 
     // Transfer
-    fn tax(&mut self, _mode: AddressingMode) -> usize {
+    fn tax(&mut self, mode: AddressingMode) -> usize {
         self.x = self.a;
         self.set_zn_flags(self.a);
+        self.advance(mode);
 
         2
     }
 
-    fn txa(&mut self, _mode: AddressingMode) -> usize {
+    fn txa(&mut self, mode: AddressingMode) -> usize {
         self.a = self.x;
         self.set_zn_flags(self.x);
+        self.advance(mode);
 
         2
     }
 
-    fn tay(&mut self, _mode: AddressingMode) -> usize {
+    fn tay(&mut self, mode: AddressingMode) -> usize {
         self.y = self.a;
         self.set_zn_flags(self.a);
+        self.advance(mode);
 
         2
     }
 
-    fn tya(&mut self, _mode: AddressingMode) -> usize {
+    fn tya(&mut self, mode: AddressingMode) -> usize {
         self.a = self.y;
         self.set_zn_flags(self.y);
+        self.advance(mode);
 
         2
     }
@@ -144,6 +173,7 @@ impl CPU {
 
         self.a = result;
 
+        self.advance(mode);
         self.access_cycles(mode)
     }
 
@@ -166,6 +196,7 @@ impl CPU {
 
         self.a = result;
 
+        self.advance(mode);
         self.access_cycles(mode)
     }
 
@@ -175,6 +206,7 @@ impl CPU {
 
         self.set_zn_flags(byte);
 
+        self.advance(mode);
         self.arithmetic_cycles(mode)
     }
 
@@ -184,30 +216,35 @@ impl CPU {
 
         self.set_zn_flags(byte);
 
+        self.advance(mode);
         self.arithmetic_cycles(mode)
     }
 
-    fn inx(&mut self, _mode: AddressingMode) -> usize {
+    fn inx(&mut self, mode: AddressingMode) -> usize {
         self.x = self.x.wrapping_add(1);
 
+        self.advance(mode);
         2
     }
 
-    fn dex(&mut self, _mode: AddressingMode) -> usize {
+    fn dex(&mut self, mode: AddressingMode) -> usize {
         self.x = self.x.wrapping_sub(1);
 
+        self.advance(mode);
         2
     }
 
-    fn iny(&mut self, _mode: AddressingMode) -> usize {
+    fn iny(&mut self, mode: AddressingMode) -> usize {
         self.y = self.y.wrapping_add(1);
 
+        self.advance(mode);
         2
     }
 
-    fn dey(&mut self, _mode: AddressingMode) -> usize {
+    fn dey(&mut self, mode: AddressingMode) -> usize {
         self.y = self.y.wrapping_sub(1);
 
+        self.advance(mode);
         2
     }
 
@@ -221,6 +258,7 @@ impl CPU {
         self.set_zn_flags(result);
         self.set8(mode, result);
 
+        self.advance(mode);
         self.arithmetic_cycles(mode)
     }
 
@@ -233,6 +271,7 @@ impl CPU {
         self.set_zn_flags(result);
         self.set8(mode, result);
 
+        self.advance(mode);
         self.arithmetic_cycles(mode)
     }
 
@@ -248,6 +287,7 @@ impl CPU {
         self.set_zn_flags(result);
         self.set8(mode, result);
 
+        self.advance(mode);
         self.arithmetic_cycles(mode)
     }
 
@@ -263,6 +303,7 @@ impl CPU {
         self.set_zn_flags(result);
         self.set8(mode, result);
 
+        self.advance(mode);
         self.arithmetic_cycles(mode)
     }
 
@@ -272,6 +313,7 @@ impl CPU {
         self.a &= value;
 
         self.set_zn_flags(self.a);
+        self.advance(mode);
         self.access_cycles(mode)
     }
 
@@ -280,6 +322,7 @@ impl CPU {
         self.a |= value;
 
         self.set_zn_flags(self.a);
+        self.advance(mode);
         self.access_cycles(mode)
     }
 
@@ -288,6 +331,7 @@ impl CPU {
         self.a ^= value;
 
         self.set_zn_flags(self.a);
+        self.advance(mode);
         self.access_cycles(mode)
     }
 
@@ -299,6 +343,7 @@ impl CPU {
         self.set_flag(CPUFlags::Overflow, bit_set(value, 6));
         self.set_flag(CPUFlags::Negative, bit_set(value, 7));
 
+        self.advance(mode);
         match mode {
             AddressingMode::ZeroPage => 3,
             AddressingMode::Absolute => 4,
@@ -314,6 +359,7 @@ impl CPU {
         self.set_flag(CPUFlags::Zero,  self.a == value);
         self.set_flag(CPUFlags::Negative, bit_set(self.a.wrapping_sub(value), 7));
 
+        self.advance(mode);
         self.access_cycles(mode)
     }
 
@@ -324,6 +370,7 @@ impl CPU {
         self.set_flag(CPUFlags::Zero,  self.x == value);
         self.set_flag(CPUFlags::Negative, bit_set(self.x.wrapping_sub(value), 7));
         
+        self.advance(mode);
         self.access_cycles(mode)
     }
 
@@ -334,6 +381,7 @@ impl CPU {
         self.set_flag(CPUFlags::Zero,  self.y == value);
         self.set_flag(CPUFlags::Negative, bit_set(self.y.wrapping_sub(value), 7));
         
+        self.advance(mode);
         self.access_cycles(mode)
     }
 
@@ -347,6 +395,8 @@ impl CPU {
             3 + if crossed_page { 1 } else { 0 }
         }
         else {
+            self.advance(mode);
+            
             2
         }
     }
@@ -407,14 +457,14 @@ impl CPU {
         6
     }
 
-    fn rts(&mut self, _mode: AddressingMode) -> usize {
+    fn rts(&mut self, mode: AddressingMode) -> usize {
         let ret_target = self.pop16();
         self.pc = ret_target + 1;
 
         6
     }
 
-    fn brk(&mut self, _mode: AddressingMode) -> usize {
+    fn brk(&mut self, mode: AddressingMode) -> usize {
         let ret_target = self.pc + 2;
         self.push16(ret_target);
         self.push8(self.p);
@@ -425,7 +475,7 @@ impl CPU {
         7
     }
 
-    fn rti(&mut self, _mode: AddressingMode) -> usize {
+    fn rti(&mut self, mode: AddressingMode) -> usize {
         self.p = self.pop8();
         self.pc = self.pop16();
 
@@ -433,87 +483,102 @@ impl CPU {
     }
 
     // Stack
-    fn pha(&mut self, _mode: AddressingMode) -> usize {
+    fn pha(&mut self, mode: AddressingMode) -> usize {
         self.push8(self.a);
+        self.advance(mode);
 
         3
     }
 
-    fn pla(&mut self, _mode: AddressingMode) -> usize {
+    fn pla(&mut self, mode: AddressingMode) -> usize {
         self.a = self.pop8();
         self.set_zn_flags(self.a);
+        self.advance(mode);
 
         4
     }
 
-    fn php(&mut self, _mode: AddressingMode) -> usize {
+    fn php(&mut self, mode: AddressingMode) -> usize {
         self.push8(self.p);
+        self.advance(mode);
 
         3
     }
 
-    fn plp(&mut self, _mode: AddressingMode) -> usize {
+    fn plp(&mut self, mode: AddressingMode) -> usize {
         self.p = self.pop8();
+        self.advance(mode);
 
         4
     }
 
-    fn txs(&mut self, _mode: AddressingMode) -> usize {
+    fn txs(&mut self, mode: AddressingMode) -> usize {
         self.sp = self.x;
+        self.advance(mode);
 
         2
     }
 
-    fn tsx(&mut self, _mode: AddressingMode) -> usize {
+    fn tsx(&mut self, mode: AddressingMode) -> usize {
         self.x = self.sp;
+        self.advance(mode);
 
         2
     }
 
     // Flags
-    fn clc(&mut self, _mode: AddressingMode) -> usize {
+    fn clc(&mut self, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::Carry, false);
+        self.advance(mode);
 
         2
     }
-    fn sec(&mut self, _mode: AddressingMode) -> usize {
+    fn sec(&mut self, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::Carry, true);
+        self.advance(mode);
 
         2
     }
 
-    fn cli(&mut self, _mode: AddressingMode) -> usize {
+    fn cli(&mut self, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::InterruptDisable, false);
+        self.advance(mode);
 
         2
     }
 
-    fn sei(&mut self, _mode: AddressingMode) -> usize {
+    fn sei(&mut self, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::InterruptDisable, true);
+        self.advance(mode);
 
         2
     }
 
-    fn cld(&mut self, _mode: AddressingMode) -> usize  {
+    fn cld(&mut self, mode: AddressingMode) -> usize  {
         self.set_flag(CPUFlags::Decimal, false);
+        self.advance(mode);
 
         2
     }
 
-    fn sed(&mut self, _mode: AddressingMode) -> usize {
+    fn sed(&mut self, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::Decimal, true);
+        self.advance(mode);
 
         2
     }
 
-    fn clv(&mut self, _mode: AddressingMode) -> usize {
+    fn clv(&mut self, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::Overflow, false);
+        self.advance(mode);
 
         2
     }
 
     // Other
-    fn nop(&mut self, _mode: AddressingMode) -> usize {
+    fn nop(&mut self, mode: AddressingMode) -> usize {
+        self.advance(mode);
+
         2
     }
 
@@ -711,5 +776,9 @@ impl CPU {
 
             _ => panic!("Unknown instruction!")
         }
+    }
+
+    pub fn step(&mut self) -> usize {
+        self.execute(self.ram[self.pc as usize])
     }
 }
