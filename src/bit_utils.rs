@@ -1,7 +1,7 @@
 use num_traits::PrimInt;
 
-pub const fn binary_bit(bit: usize) -> usize {
-    1 << bit
+pub const fn address_from_bytes(lsb: u8, msb: u8) -> u16 {
+    ((msb as u16) << 8) | lsb as u16
 }
 
 pub fn bit_set<T: PrimInt>(val: T, bit: usize) -> bool {
