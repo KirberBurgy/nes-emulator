@@ -9,6 +9,7 @@ pub trait Mapper {
     fn vram_write(&mut self, addr: u16, value: u8);
 }
 
+#[derive(Debug)]
 pub enum NametableMirroring {
     Horizontal,
     Vertical,

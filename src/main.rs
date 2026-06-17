@@ -2,7 +2,7 @@ use std::fs::{self};
 
 use serde_json::Value;
 
-use crate::{cpu::CPU, memory_bus::MemoryBus};
+use crate::{cartridge::Cartridge, cpu::CPU, memory_bus::MemoryBus};
 
 pub mod bit_utils;
 
@@ -127,8 +127,5 @@ fn run_test(name: &str) {
 }
 
 fn main() {
-    for i in 0x00..=0xFF {
-        let test_name = format!("tests/single_step/{:02x}.json", i);
-        run_test(&test_name);
-    }
+    let donkey_kong = Cartridge::load("tests/roms/Donkey Kong.nes").unwrap();
 }
