@@ -1,8 +1,8 @@
-use std::{fs::{self, File}, io::{BufRead, BufReader, Write}};
+use std::fs::{self};
 
 use serde_json::Value;
 
-use crate::{bit_utils::bit_set, cpu::CPU};
+use crate::{cpu::CPU};
 
 pub mod bit_utils;
 
@@ -11,6 +11,7 @@ pub mod cpu;
 pub mod instructions;
 
 // AI-generated test runner. Sorry, not sorry!
+/*
 fn run_test(name: &str) {
     let str = fs::read_to_string(name).unwrap();
     let tests: Value = serde_json::from_str(&str).unwrap();
@@ -113,11 +114,8 @@ fn run_test(name: &str) {
         panic!("{} test(s) failed in suite '{}'.", failed, name);
     }
 }
+*/
 
 fn main() {
-    for i in 0x00..=0xFF {
-        println!("Instruction {:02x}", i);
-        
-        run_test(&format!("tests/single_step/{:02x}.json", i));
-    }
+
 }

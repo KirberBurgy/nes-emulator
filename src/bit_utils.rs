@@ -31,3 +31,10 @@ pub fn get_bits<T: PrimInt>(val: T, range: Range<usize>) -> T {
 
     (val >> range.start) & mask
 }
+
+pub fn set_bits<T: PrimInt>(val: T, range: Range<usize>, to: T) -> T {
+    let width = range.end - range.start;
+    let mask = ((T::one() << width) - T::one()) << range.start;
+
+    (val & !mask) | (get_bits(to, 0..width) << range.start)
+}

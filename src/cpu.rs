@@ -82,6 +82,21 @@ impl CPU {
         bit_set(self.p, flag as usize)
     }
 
+
+    pub fn read8(&self, addr: u16) -> u8 {
+        self.ram[addr as usize]
+    }
+
+    pub fn read16(&self, addr: u16) -> u16 {
+        address_from_bytes(self.ram[addr as usize], self.ram[addr.wrapping_add(1) as usize])
+    }
+
+
+    pub fn write8(&mut self, addr: u16, to: u8) {
+        self.ram[addr as usize] = to;
+    }
+
+
     pub fn push8(&mut self, b: u8) {
         self.ram[0x100 + self.sp as usize] = b;
         self.sp = self.sp.wrapping_sub(1);
@@ -116,44 +131,35 @@ impl CPU {
     pub(crate) fn get_address(&self, mode: AddressingMode) -> usize {  
         match mode {
             AddressingMode::ZeroPage => {
-                self.ram[self.pc.wrapping_add(1) as usize] as usize
+                self.read8(self.pc.wrapping_add(1)) as usize
             }
 
             AddressingMode::ZeroPageX => {
                 self.x
-                    .wrapping_add(self.ram[self.pc.wrapping_add(1) as usize])
+                    .wrapping_add(self.read8(self.pc.wrapping_add(1)))
                     as usize
             }
 
             AddressingMode::ZeroPageY => {
                 self.y
-                    .wrapping_add(self.ram[self.pc.wrapping_add(1) as usize])
+                    .wrapping_add(self.read8(self.pc.wrapping_add(1)))
                     as usize
             }
 
             AddressingMode::Absolute => {
-                let lsb = self.ram[self.pc.wrapping_add(1) as usize];
-                let msb = self.ram[self.pc.wrapping_add(2) as usize];
-
-                address_from_bytes(lsb, msb) as usize
+                self.read16(self.pc.wrapping_add(1)) as usize
             }
 
             AddressingMode::AbsoluteX => {
-                let lsb = self.ram[self.pc.wrapping_add(1) as usize];
-                let msb = self.ram[self.pc.wrapping_add(2) as usize];
-
-                address_from_bytes(lsb, msb).wrapping_add(self.x as u16) as usize
+                self.read16(self.pc.wrapping_add(1)).wrapping_add(self.x as u16) as usize
             }
 
             AddressingMode::AbsoluteY => {
-                let lsb = self.ram[self.pc.wrapping_add(1) as usize];
-                let msb = self.ram[self.pc.wrapping_add(2) as usize];
-
-                address_from_bytes(lsb, msb).wrapping_add(self.y as u16) as usize
+                self.read16(self.pc.wrapping_add(1)).wrapping_add(self.y as u16) as usize
             }
 
             AddressingMode::Relative  => {
-                let offset = self.ram[self.pc.wrapping_add(1) as usize] as i8;
+                let offset = self.read8(self.pc.wrapping_add(1)) as i8;
 
                 self.pc
                     .wrapping_add(2)
@@ -161,37 +167,35 @@ impl CPU {
             }
 
             AddressingMode::Indirect => {
-                let ptr_lsb = self.ram[self.pc.wrapping_add(1) as usize];
-                let ptr_msb = self.ram[self.pc.wrapping_add(2) as usize];
+                let ptr = self.read16(self.pc.wrapping_add(1));
 
-                let ptr = address_from_bytes(ptr_lsb, ptr_msb);
-
-                let lsb = self.ram[ptr as usize];
+                let lsb = self.read8(ptr);
 
                 let msb_addr =
                     (ptr & 0xFF00) |
                     ((ptr.wrapping_add(1)) & 0x00FF);
 
-                let msb = self.ram[msb_addr as usize];
+                let msb = self.read8(msb_addr);
 
                 address_from_bytes(lsb, msb) as usize
             }
 
             AddressingMode::IndexedIndirect => {
                 let ptr = self.x
-                    .wrapping_add(self.ram[self.pc.wrapping_add(1) as usize]);
+                    .wrapping_add(self.read8(self.pc.wrapping_add(1)));
 
-                let lsb = self.ram[ptr as usize];
-                let msb = self.ram[ptr.wrapping_add(1) as usize];
+                // Must read byte by byte to preserve page wrapping behaviors
+                let lsb = self.read8(ptr as u16);
+                let msb = self.read8(ptr.wrapping_add(1) as u16);
 
                 address_from_bytes(lsb, msb) as usize
             }
 
             AddressingMode::IndirectIndexed => {
-                let ptr = self.ram[self.pc.wrapping_add(1) as usize];
+                let ptr = self.read8(self.pc.wrapping_add(1));
 
-                let lsb = self.ram[ptr as usize];
-                let msb = self.ram[ptr.wrapping_add(1) as usize];
+                let lsb = self.read8(ptr as u16);
+                let msb = self.read8(ptr.wrapping_add(1) as u16);
 
                 address_from_bytes(lsb, msb).wrapping_add(self.y as u16) as usize
             }
@@ -264,12 +268,12 @@ impl CPU {
 
             AddressingMode::Immediate |
             AddressingMode::Relative => {
-                self.ram[self.pc.wrapping_add(1) as usize]
+                self.read8(self.pc.wrapping_add(1))
             }
 
             _ => {
                 let addr = self.get_address(mode);
-                self.ram[addr]
+                self.read8(addr as u16)
             }
         }
     }
@@ -286,8 +290,8 @@ impl CPU {
             }
 
             _ => {
-                let addr = self.get_address(mode);
-                self.ram[addr] = value;
+                let addr = self.get_address(mode) as u16;
+                self.write8(addr, value);
             }
         }
     }
