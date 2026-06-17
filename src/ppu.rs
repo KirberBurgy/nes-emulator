@@ -1,7 +1,8 @@
-use crate::bit_utils::{bit_set, get_bits, set_bit, set_bits};
+use crate::{bit_utils::{bit_set, get_bits, set_bit, set_bits}, cartridge::Cartridge};
 
 
 #[repr(usize)]
+#[derive(Copy, Clone, Debug)]
 pub enum PPUControlFlags {
     X9thBit                 = 0,
     Y9thBit                 = 1,
@@ -14,6 +15,7 @@ pub enum PPUControlFlags {
 }
 
 #[repr(usize)]
+#[derive(Copy, Clone, Debug)]
 pub enum PPUMaskFlags {
     Greyscale           = 0,
     ShowBorderBg        = 1,
@@ -27,6 +29,7 @@ pub enum PPUMaskFlags {
 
 
 #[repr(usize)]
+#[derive(Copy, Clone, Debug)]
 pub enum PPUStatusFlags {
     SpriteOverflow  = 5,
     Sprite0Hit      = 6,
@@ -48,7 +51,7 @@ pub struct PPU {
     pub oam_addr:   u8,
     pub oam:        [u8; 0x100],
 
-    pub vram:       Box<[u8; 0x0800]>
+    pub palette:    [u8; 0x020]
 }
 
 impl PPU {
@@ -65,7 +68,7 @@ impl PPU {
             buffer:     0,
             oam_addr:   0,
             oam:        [0; 0x100],
-            vram:       Box::new([0; 0x0800])
+            palette:    [0; 0x020]
         }
     }
 
@@ -77,6 +80,8 @@ impl PPU {
             1 
         }
     }
+
+
 
     pub fn ppustatus_read(&mut self) -> u8 {
         self.w = false;
@@ -95,6 +100,7 @@ impl PPU {
     pub fn ppumask_write(&mut self, to: u8) {
         self.mask = to;
     }
+
 
 
     pub fn ppuscroll_write(&mut self, to: u8) {
@@ -127,18 +133,61 @@ impl PPU {
         }
     }
 
-    // TO DO: Should be memory mapped.
-    pub fn ppudata_read(&mut self) -> u8 {
-        let byte = self.buffer;
-        self.buffer = self.vram[self.v as usize];
+
+    fn palette_address(addr: u16) -> usize {
+        let mut addr = (addr - 0x3F00) % 0x20;
+
+        if matches!(addr, 0x10 | 0x14 | 0x18 | 0x1C) {
+            addr -= 0x10;
+        }
+
+        addr as usize
+    }
+
+    fn ppu_read(cart: &mut Cartridge, addr: u16) -> u8 {
+        match addr {
+            0x0000..0x2000 => cart.chr_read(addr),
+            0x2000..0x3F00 => cart.vram_read(addr),
+
+            _ => 0
+        }
+    }
+
+
+    pub fn ppudata_read(&mut self, cart: &mut Cartridge) -> u8 {
+        let byte = match self.v {
+            0x0000..0x3F00 => {
+                let ret = self.buffer;
+
+                self.buffer = Self::ppu_read(cart, self.v);
+
+                ret
+            }
+
+            0x3F00..0x4000 => {
+                let ret = self.palette[Self::palette_address(self.v)];
+
+                self.buffer = Self::ppu_read(cart, self.v - 0x1000);
+
+                ret
+            }
+
+            _ => unreachable!(),
+        };
 
         self.v = self.v.wrapping_add(self.increment());
 
         byte
     }
 
-    pub fn ppudata_write(&mut self, to: u8) {
-        self.vram[self.v as usize] = to;
+    pub fn ppudata_write(&mut self, cart: &mut Cartridge, to: u8) {
+        match self.v {
+            0x0000..0x2000 => cart.chr_write(self.v, to),
+            0x2000..0x3F00 => cart.vram_write(self.v, to),
+            0x3F00..0x4000 => self.palette[Self::palette_address(self.v)] = to,
+
+            _ => unreachable!()
+        };
 
         self.v = self.v.wrapping_add(self.increment());
     }

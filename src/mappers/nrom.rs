@@ -22,8 +22,6 @@ impl NROM {
 
 impl Mapper for NROM {
     fn prg_read(&mut self, mut addr: u16) -> u8 {
-        addr -= 0x8000;
-
         if !self.is_32k {
             addr %= 0x4000;
         }

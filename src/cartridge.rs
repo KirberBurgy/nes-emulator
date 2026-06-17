@@ -56,7 +56,7 @@ impl Cartridge {
             if bit_set(header[6], 0) { NametableMirroring::Vertical }
             else { NametableMirroring::Horizontal };
 
-        println!("Using nametable mirroring '{:?}'", mirroring);
+        println!("Using nametable mirroring '{:?}.'", mirroring);
         
         let mut prg_rom = Vec::with_capacity(prg_rom_size);
         reader.read_exact(&mut prg_rom).unwrap();
@@ -72,5 +72,52 @@ impl Cartridge {
     fn load_nes20(reader: &mut BufReader<File>, header: [u8; 16]) -> Option<Cartridge> {
         // Right now there are no differences.
         Self::load_ines(reader, header)
+    }
+
+    fn mirrored_address(mode: NametableMirroring, addr: u16) -> u16 {
+        match mode {
+            NametableMirroring::Horizontal  => {
+                match addr {
+                    0x0400..0x0C00 => addr - 0x0400,
+                    0x0C00..0x1000 => addr - 0x0800,
+
+                    _ => addr
+                }
+            }
+
+            NametableMirroring::Vertical    => {
+                addr % 0x0800
+            }
+
+            NametableMirroring::FourScreen  => addr,
+        }
+    }
+
+    // Assumes `addr` is in the range 0x8000-0xFFFF
+    pub fn prg_read(&mut self, addr: u16) -> u8 {
+        self.mapper.prg_read(addr - 0x8000)
+    }
+
+    // Assumes `addr` is in the range 0x0000-0x1FFF
+    pub fn chr_read(&mut self, addr: u16) -> u8 {
+        self.mapper.chr_read(addr)
+    }
+
+    // Assumes `addr` is in the range 0x2000-0x3FFF
+    pub fn vram_read(&mut self, addr: u16) -> u8 {
+        self.mapper.vram_read(Self::mirrored_address(self.mirroring, addr - 0x2000))
+    }
+
+
+    pub fn prg_write(&mut self, addr: u16, value: u8) {
+        self.mapper.prg_write(addr - 0x8000, value);
+    }
+
+    pub fn chr_write(&mut self, addr: u16, value: u8) {
+        self.mapper.chr_write(addr, value);
+    }
+
+    pub fn vram_write(&mut self, addr: u16, value: u8) {
+        self.mapper.vram_write(Self::mirrored_address(self.mirroring, addr - 0x2000), value);
     }
 }
