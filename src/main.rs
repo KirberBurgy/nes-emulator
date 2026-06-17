@@ -9,8 +9,9 @@ pub mod bit_utils;
 pub mod memory_bus;
 
 pub mod cpu;
-
 pub mod instructions;
+
+pub mod ppu;
 
 // AI-generated test runner. Sorry, not sorry!
 fn run_test(name: &str) {
