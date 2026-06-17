@@ -808,10 +808,17 @@ impl CPU {
     }
 
     pub fn step(&mut self, bus: &mut MemoryBus) -> bool {
-        let opcode = self.read8(bus, self.pc);
+        if self.delay > 0 {
+            self.delay -= 1;
+            self.cycles += 1;
 
+            return true;
+        }
+
+        let opcode = self.read8(bus, self.pc);
         if let Some(cycles) = self.execute(bus, opcode) {
-            self.cycles += cycles;
+            self.cycles += 1;
+            self.delay = cycles - 1;
 
             return true;
         }

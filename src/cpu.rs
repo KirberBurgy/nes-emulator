@@ -43,6 +43,7 @@ pub enum AddressingMode {
     IndirectIndexed
 }
 
+#[derive(Debug, Clone)]
 pub struct CPU {
     pub pc:     u16,
 
@@ -54,7 +55,8 @@ pub struct CPU {
     pub x:      u8,
     pub y:      u8,
     
-    pub cycles: usize
+    pub cycles: usize,
+    pub delay:  usize
 }
 
 impl CPU {
@@ -67,7 +69,8 @@ impl CPU {
             a:      0,
             x:      0,
             y:      0,
-            cycles: 0
+            cycles: 0,
+            delay:  0
         }
     }
 
@@ -277,7 +280,5 @@ impl CPU {
         }
     }
 
-    pub fn dbg(&self) {
-        println!("PC: {:X}\n    NV  DIZC\nP:  {:08b}\nSP: {}\nA:  {}\nX:  {}\nY:  {}", self.pc, self.p, self.sp, self.a, self.x, self.y);
-    }
+    
 }

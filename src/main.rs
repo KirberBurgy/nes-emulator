@@ -1,8 +1,4 @@
-use std::fs::{self};
-
-use serde_json::Value;
-
-use crate::{cartridge::Cartridge, cpu::CPU, memory_bus::MemoryBus};
+use crate::{cartridge::Cartridge};
 
 pub mod bit_utils;
 
