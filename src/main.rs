@@ -14,6 +14,9 @@ pub mod instructions;
 pub mod ppu;
 
 pub mod mapper;
+pub mod mappers;
+
+pub mod cartridge;
 
 // AI-generated test runner. Sorry, not sorry!
 fn run_test(name: &str) {
