@@ -13,6 +13,8 @@ pub mod instructions;
 
 pub mod ppu;
 
+pub mod mapper;
+
 // AI-generated test runner. Sorry, not sorry!
 fn run_test(name: &str) {
     let str = fs::read_to_string(name).unwrap();
