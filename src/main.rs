@@ -1,4 +1,4 @@
-use crate::{cartridge::Cartridge};
+use crate::{cartridge::Cartridge, cpu::CPU, memory_bus::MemoryBus};
 
 pub mod bit_utils;
 
@@ -16,4 +16,9 @@ pub mod cartridge;
 
 fn main() {
     let donkey_kong = Cartridge::load("tests/roms/Donkey Kong.nes").unwrap();
+    let mut memory_bus = MemoryBus::new(donkey_kong);
+    let mut cpu = CPU::new();
+
+    cpu.jump_to_startup(&mut memory_bus);
+    dbg!(&cpu);
 }

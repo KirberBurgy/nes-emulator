@@ -125,6 +125,10 @@ impl CPU {
         self.pc = self.read16(bus, 0xFFFE);
     }
 
+    pub fn jump_to_startup(&mut self, bus: &mut MemoryBus) {
+        self.pc = self.read16(bus, 0xFFFC);
+    }
+
     pub(crate) fn get_address(&self, bus: &mut MemoryBus, mode: AddressingMode) -> u16 {  
         match mode {
             AddressingMode::ZeroPage => {

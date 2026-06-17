@@ -59,9 +59,11 @@ impl Cartridge {
         println!("Using nametable mirroring '{:?}.'", mirroring);
         
         let mut prg_rom = Vec::with_capacity(prg_rom_size);
+        prg_rom.resize(prg_rom_size, 0);
         reader.read_exact(&mut prg_rom).unwrap();
 
         let mut chr_rom = Vec::with_capacity(chr_rom_size);
+        chr_rom.resize(chr_rom_size, 0);
         reader.read_exact(&mut chr_rom).unwrap();
 
         let mapper = new_mapper(prg_rom, chr_rom, mapper_number);
