@@ -807,7 +807,7 @@ impl CPU {
         })
     }
 
-    pub fn step(&mut self, bus: &mut MemoryBus) -> bool {
+    pub fn tick(&mut self, bus: &mut MemoryBus) -> bool {
         if self.delay > 0 {
             self.delay -= 1;
             self.cycles += 1;
@@ -819,6 +819,17 @@ impl CPU {
         if let Some(cycles) = self.execute(bus, opcode) {
             self.cycles += 1;
             self.delay = cycles - 1;
+
+            return true;
+        }
+
+        false
+    }
+
+    pub fn step(&mut self, bus: &mut MemoryBus) -> bool {
+        let opcode = self.read8(bus, self.pc);
+        if let Some(cycles) = self.execute(bus, opcode) {
+            self.cycles += cycles;
 
             return true;
         }

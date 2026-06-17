@@ -43,7 +43,7 @@ pub enum AddressingMode {
     IndirectIndexed
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct CPU {
     pub pc:     u16,
 
@@ -64,7 +64,7 @@ impl CPU {
         CPU
         {
             pc:     0,
-            sp:     0xFF,
+            sp:     0xFD,
             p:      0b00110000,
             a:      0,
             x:      0,
@@ -128,6 +128,7 @@ impl CPU {
     pub fn jump_to_startup(&mut self, bus: &mut MemoryBus) {
         self.pc = self.read16(bus, 0xFFFC);
     }
+
 
     pub(crate) fn get_address(&self, bus: &mut MemoryBus, mode: AddressingMode) -> u16 {  
         match mode {
@@ -284,5 +285,7 @@ impl CPU {
         }
     }
 
-    
+    pub fn debug(&self) {
+        println!("PC: {:X}\n    NV  DIZC\nP:  {:08b}\nSP: {:02X}\nA:  {:02X}\nX:  {:02X}\nY:  {:02X}", self.pc, self.p, self.sp, self.a, self.x, self.y);
+    }
 }

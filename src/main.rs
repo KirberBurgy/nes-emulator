@@ -20,5 +20,15 @@ fn main() {
     let mut cpu = CPU::new();
 
     cpu.jump_to_startup(&mut memory_bus);
-    dbg!(&cpu);
+    cpu.debug();
+    println!();
+
+    for i in 0..12 {
+        cpu.step(&mut memory_bus);
+        cpu.debug();
+        println!();
+    }
+
+    cpu.debug();
+    println!();
 }
