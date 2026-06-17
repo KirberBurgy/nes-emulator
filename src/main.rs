@@ -2,16 +2,17 @@ use std::fs::{self};
 
 use serde_json::Value;
 
-use crate::{cpu::CPU};
+use crate::{cpu::CPU, memory_bus::MemoryBus};
 
 pub mod bit_utils;
+
+pub mod memory_bus;
 
 pub mod cpu;
 
 pub mod instructions;
 
 // AI-generated test runner. Sorry, not sorry!
-/*
 fn run_test(name: &str) {
     let str = fs::read_to_string(name).unwrap();
     let tests: Value = serde_json::from_str(&str).unwrap();
@@ -22,7 +23,10 @@ fn run_test(name: &str) {
     let mut failed = 0;
 
     for (index, test) in tests.iter().enumerate() {
+        let mut bus = MemoryBus::new();
         let mut cpu = CPU::new();
+
+        cpu.step(&mut bus);
 
         let initial = &test["initial"];
         cpu.pc  = initial["pc"].as_u64().unwrap() as u16;
@@ -39,10 +43,10 @@ fn run_test(name: &str) {
         for set in ram {
             let idx = set[0].as_u64().unwrap() as usize;
             let value = set[1].as_u64().unwrap() as u8;
-            cpu.ram[idx] = value;
+            bus.write(idx as u16, value);
         }
 
-        if !cpu.step() { 
+        if !cpu.step(&mut bus) { 
             println!("[Test #{}] Unknown instruction; skipping test.", index);
 
             break;
@@ -83,11 +87,12 @@ fn run_test(name: &str) {
             let ram_idx = set[0].as_u64().unwrap() as usize;
             let expected_ram_val = set[1].as_u64().unwrap() as u8;
 
-            if cpu.ram[ram_idx] != expected_ram_val {
+            let read = bus.read(ram_idx as u16);
+            if read != expected_ram_val {
                 test_failed = true;
                 errors.push(format!(
                     "  RAM mismatch at [{:04X}] -> Got: {}, Expected: {}", 
-                    ram_idx, cpu.ram[ram_idx], expected_ram_val
+                    ram_idx, read, expected_ram_val
                 ));
             }
         }
@@ -114,8 +119,10 @@ fn run_test(name: &str) {
         panic!("{} test(s) failed in suite '{}'.", failed, name);
     }
 }
-*/
 
 fn main() {
-
+    for i in 0x00..=0xFF {
+        let test_name = format!("tests/single_step/{:02x}.json", i);
+        run_test(&test_name);
+    }
 }

@@ -1,6 +1,6 @@
 use crate::{
     bit_utils::{bit_set, nth_bit, set_bit},
-    cpu::{AddressingMode, CPU, CPUFlags},
+    cpu::{AddressingMode, CPU, CPUFlags}, memory_bus::MemoryBus,
 };
 
 #[allow(unused)]
@@ -28,7 +28,7 @@ impl CPU {
         });
     }
 
-    fn access_cycles(&self, mode: AddressingMode) -> usize {
+    fn access_cycles(&self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         match mode {
             AddressingMode::Immediate => 2,
 
@@ -37,11 +37,11 @@ impl CPU {
             AddressingMode::ZeroPageY => 4,
 
             AddressingMode::Absolute => 4,
-            AddressingMode::AbsoluteX => 4 + (if self.page_crossed(mode) { 1 } else { 0 }),
-            AddressingMode::AbsoluteY => 4 + (if self.page_crossed(mode) { 1 } else { 0 }),
+            AddressingMode::AbsoluteX => 4 + (if self.page_crossed(bus, mode) { 1 } else { 0 }),
+            AddressingMode::AbsoluteY => 4 + (if self.page_crossed(bus, mode) { 1 } else { 0 }),
 
             AddressingMode::IndexedIndirect => 6,
-            AddressingMode::IndirectIndexed => 5 + (if self.page_crossed(mode) { 1 } else { 0 }),
+            AddressingMode::IndirectIndexed => 5 + (if self.page_crossed(bus, mode) { 1 } else { 0 }),
 
             _ => unreachable!(),
         }
@@ -79,60 +79,60 @@ impl CPU {
     }
 
     // Access
-    fn lda(&mut self, mode: AddressingMode) -> usize {
-        let byte = self.get8(mode);
+    fn lda(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let byte = self.get8(bus, mode);
 
         self.a = byte;
 
         self.set_zn_flags(self.a);
-        let cycles = self.access_cycles(mode);
+        let cycles = self.access_cycles(bus, mode);
         self.advance(mode);
         cycles
     }
 
-    fn sta(&mut self, mode: AddressingMode) -> usize {
-        self.set8(mode, self.a);
+    fn sta(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.set8(bus, mode, self.a);
         let cycles = self.store_cycles(mode);
         self.advance(mode);
         cycles
     }
 
-    fn ldx(&mut self, mode: AddressingMode) -> usize {
-        let byte = self.get8(mode);
+    fn ldx(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let byte = self.get8(bus, mode);
 
         self.x = byte;
         self.set_zn_flags(self.x);
-        let cycles = self.access_cycles(mode);
+        let cycles = self.access_cycles(bus, mode);
         self.advance(mode);
         cycles
     }
 
-    fn stx(&mut self, mode: AddressingMode) -> usize {
-        self.set8(mode, self.x);
+    fn stx(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.set8(bus, mode, self.x);
         let cycles = self.store_cycles(mode);
         self.advance(mode);
         cycles
     }
 
-    fn ldy(&mut self, mode: AddressingMode) -> usize {
-        let byte = self.get8(mode);
+    fn ldy(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let byte = self.get8(bus, mode);
 
         self.y = byte;
         self.set_zn_flags(self.y);
-        let cycles = self.access_cycles(mode);
+        let cycles = self.access_cycles(bus, mode);
         self.advance(mode);
         cycles
     }
 
-    fn sty(&mut self, mode: AddressingMode) -> usize {
-        self.set8(mode, self.y);
+    fn sty(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.set8(bus, mode, self.y);
         let cycles = self.store_cycles(mode);
         self.advance(mode);
         cycles
     }
 
     // Transfer
-    fn tax(&mut self, mode: AddressingMode) -> usize {
+    fn tax(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.x = self.a;
         self.set_zn_flags(self.a);
         self.advance(mode);
@@ -140,7 +140,7 @@ impl CPU {
         2
     }
 
-    fn txa(&mut self, mode: AddressingMode) -> usize {
+    fn txa(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.a = self.x;
         self.set_zn_flags(self.x);
         self.advance(mode);
@@ -148,7 +148,7 @@ impl CPU {
         2
     }
 
-    fn tay(&mut self, mode: AddressingMode) -> usize {
+    fn tay(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.y = self.a;
         self.set_zn_flags(self.a);
         self.advance(mode);
@@ -156,7 +156,7 @@ impl CPU {
         2
     }
 
-    fn tya(&mut self, mode: AddressingMode) -> usize {
+    fn tya(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.a = self.y;
         self.set_zn_flags(self.y);
         self.advance(mode);
@@ -165,8 +165,8 @@ impl CPU {
     }
 
     // Arithmetic
-    fn adc(&mut self, mode: AddressingMode) -> usize {
-        let value = self.get8(mode);
+    fn adc(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let value = self.get8(bus, mode);
         let carry_in = self.flag_set(CPUFlags::Carry) as u8;
 
         let (sum1, carry1) = self.a.overflowing_add(value);
@@ -185,13 +185,13 @@ impl CPU {
         self.set_flag(CPUFlags::Negative, bit_set(result, 7));
 
         self.a = result;
-        let cycles = self.access_cycles(mode);
+        let cycles = self.access_cycles(bus, mode);
         self.advance(mode);
         cycles
     }
 
-    fn sbc(&mut self, mode: AddressingMode) -> usize {
-        let value = !self.get8(mode);
+    fn sbc(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let value = !self.get8(bus, mode);
         let carry_in = self.flag_set(CPUFlags::Carry) as u8;
 
         let (sum1, carry1) = self.a.overflowing_add(value);
@@ -210,14 +210,14 @@ impl CPU {
         self.set_flag(CPUFlags::Negative, bit_set(result, 7));
 
         self.a = result;
-        let cycles = self.access_cycles(mode);
+        let cycles = self.access_cycles(bus, mode);
         self.advance(mode);
         cycles
     }
 
-    fn inc(&mut self, mode: AddressingMode) -> usize {
-        let byte = self.get8(mode).wrapping_add(1);
-        self.set8(mode, byte);
+    fn inc(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let byte = self.get8(bus, mode).wrapping_add(1);
+        self.set8(bus, mode, byte);
 
         self.set_zn_flags(byte);
 
@@ -226,9 +226,9 @@ impl CPU {
         cycles
     }
 
-    fn dec(&mut self, mode: AddressingMode) -> usize {
-        let byte = self.get8(mode).wrapping_sub(1);
-        self.set8(mode, byte);
+    fn dec(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let byte = self.get8(bus, mode).wrapping_sub(1);
+        self.set8(bus, mode, byte);
 
         self.set_zn_flags(byte);
 
@@ -237,7 +237,7 @@ impl CPU {
         cycles
     }
 
-    fn inx(&mut self, mode: AddressingMode) -> usize {
+    fn inx(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.x = self.x.wrapping_add(1);
 
         self.set_zn_flags(self.x);
@@ -245,7 +245,7 @@ impl CPU {
         2
     }
 
-    fn dex(&mut self, mode: AddressingMode) -> usize {
+    fn dex(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.x = self.x.wrapping_sub(1);
 
         self.set_zn_flags(self.x);
@@ -253,7 +253,7 @@ impl CPU {
         2
     }
 
-    fn iny(&mut self, mode: AddressingMode) -> usize {
+    fn iny(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.y = self.y.wrapping_add(1);
 
         self.set_zn_flags(self.y);
@@ -261,7 +261,7 @@ impl CPU {
         2
     }
 
-    fn dey(&mut self, mode: AddressingMode) -> usize {
+    fn dey(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.y = self.y.wrapping_sub(1);
 
         self.set_zn_flags(self.y);
@@ -270,36 +270,36 @@ impl CPU {
     }
 
     // Shift
-    fn asl(&mut self, mode: AddressingMode) -> usize {
-        let value = self.get8(mode);
+    fn asl(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let value = self.get8(bus, mode);
 
         self.p = set_bit(self.p, CPUFlags::Carry as usize, bit_set(value, 7));
         let result = value << 1;
 
         self.set_zn_flags(result);
-        self.set8(mode, result);
+        self.set8(bus, mode, result);
 
         let cycles = self.arithmetic_cycles(mode);
         self.advance(mode);
         cycles
     }
 
-    fn lsr(&mut self, mode: AddressingMode) -> usize {
-        let value = self.get8(mode);
+    fn lsr(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let value = self.get8(bus, mode);
 
         self.p = set_bit(self.p, CPUFlags::Carry as usize, bit_set(value, 0));
         let result = value >> 1;
 
         self.set_zn_flags(result);
-        self.set8(mode, result);
+        self.set8(bus, mode, result);
 
         let cycles = self.arithmetic_cycles(mode);
         self.advance(mode);
         cycles
     }
 
-    fn rol(&mut self, mode: AddressingMode) -> usize {
-        let value = self.get8(mode);
+    fn rol(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let value = self.get8(bus, mode);
 
         let carry_in = self.flag_set(CPUFlags::Carry) as u8;
         let carry_out = bit_set(value, 7);
@@ -308,15 +308,15 @@ impl CPU {
 
         self.set_flag(CPUFlags::Carry, carry_out);
         self.set_zn_flags(result);
-        self.set8(mode, result);
+        self.set8(bus, mode, result);
 
         let cycles = self.arithmetic_cycles(mode);
         self.advance(mode);
         cycles
     }
 
-    fn ror(&mut self, mode: AddressingMode) -> usize {
-        let value = self.get8(mode);
+    fn ror(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let value = self.get8(bus, mode);
 
         let carry_in = (self.flag_set(CPUFlags::Carry) as u8) << 7;
         let carry_out = bit_set(value, 0);
@@ -325,7 +325,7 @@ impl CPU {
 
         self.set_flag(CPUFlags::Carry, carry_out);
         self.set_zn_flags(result);
-        self.set8(mode, result);
+        self.set8(bus, mode, result);
 
         let cycles = self.arithmetic_cycles(mode);
         self.advance(mode);
@@ -333,38 +333,38 @@ impl CPU {
     }
 
     // Bitwise
-    fn and(&mut self, mode: AddressingMode) -> usize {
-        let value = self.get8(mode);
+    fn and(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let value = self.get8(bus, mode);
         self.a &= value;
 
         self.set_zn_flags(self.a);
-        let cycles = self.access_cycles(mode);
+        let cycles = self.access_cycles(bus, mode);
         self.advance(mode);
         cycles
     }
 
-    fn ora(&mut self, mode: AddressingMode) -> usize {
-        let value = self.get8(mode);
+    fn ora(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let value = self.get8(bus, mode);
         self.a |= value;
 
         self.set_zn_flags(self.a);
-        let cycles = self.access_cycles(mode);
+        let cycles = self.access_cycles(bus, mode);
         self.advance(mode);
         cycles
     }
 
-    fn eor(&mut self, mode: AddressingMode) -> usize {
-        let value = self.get8(mode);
+    fn eor(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let value = self.get8(bus, mode);
         self.a ^= value;
 
         self.set_zn_flags(self.a);
-        let cycles = self.access_cycles(mode);
+        let cycles = self.access_cycles(bus, mode);
         self.advance(mode);
         cycles
     }
 
-    fn bit(&mut self, mode: AddressingMode) -> usize {
-        let value = self.get8(mode);
+    fn bit(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let value = self.get8(bus, mode);
         let result = self.a & value;
 
         self.set_flag(CPUFlags::Zero, result == 0);
@@ -380,43 +380,43 @@ impl CPU {
     }
 
     // Compare
-    fn cmp(&mut self, mode: AddressingMode) -> usize {
-        let value = self.get8(mode);
+    fn cmp(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let value = self.get8(bus, mode);
 
         self.set_flag(CPUFlags::Carry, self.a >= value);
         self.set_flag(CPUFlags::Zero, self.a == value);
         self.set_flag(CPUFlags::Negative, bit_set(self.a.wrapping_sub(value), 7));
-        let cycles = self.access_cycles(mode);
+        let cycles = self.access_cycles(bus, mode);
         self.advance(mode);
         cycles
     }
 
-    fn cpx(&mut self, mode: AddressingMode) -> usize {
-        let value = self.get8(mode);
+    fn cpx(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let value = self.get8(bus, mode);
 
         self.set_flag(CPUFlags::Carry, self.x >= value);
         self.set_flag(CPUFlags::Zero, self.x == value);
         self.set_flag(CPUFlags::Negative, bit_set(self.x.wrapping_sub(value), 7));
-        let cycles = self.access_cycles(mode);
+        let cycles = self.access_cycles(bus, mode);
         self.advance(mode);
         cycles
     }
 
-    fn cpy(&mut self, mode: AddressingMode) -> usize {
-        let value = self.get8(mode);
+    fn cpy(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let value = self.get8(bus, mode);
 
         self.set_flag(CPUFlags::Carry, self.y >= value);
         self.set_flag(CPUFlags::Zero, self.y == value);
         self.set_flag(CPUFlags::Negative, bit_set(self.y.wrapping_sub(value), 7));
-        let cycles = self.access_cycles(mode);
+        let cycles = self.access_cycles(bus, mode);
         self.advance(mode);
         cycles
     }
 
-    fn branch(&mut self, mode: AddressingMode, b: bool) -> usize {
+    fn branch(&mut self, bus: &mut MemoryBus, mode: AddressingMode, b: bool) -> usize {
         if b {
-            let branch_position = self.get_address(mode);
-            let crossed_page = self.page_crossed(mode);
+            let branch_position = self.get_address(bus, mode);
+            let crossed_page = self.page_crossed(bus, mode);
 
             self.pc = branch_position as u16;
 
@@ -429,41 +429,41 @@ impl CPU {
     }
 
     // Branch
-    fn bcc(&mut self, mode: AddressingMode) -> usize {
-        self.branch(mode, !self.flag_set(CPUFlags::Carry))
+    fn bcc(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.branch(bus, mode, !self.flag_set(CPUFlags::Carry))
     }
 
-    fn bcs(&mut self, mode: AddressingMode) -> usize {
-        self.branch(mode, self.flag_set(CPUFlags::Carry))
+    fn bcs(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.branch(bus, mode, self.flag_set(CPUFlags::Carry))
     }
 
-    fn beq(&mut self, mode: AddressingMode) -> usize {
-        self.branch(mode, self.flag_set(CPUFlags::Zero))
+    fn beq(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.branch(bus, mode, self.flag_set(CPUFlags::Zero))
     }
 
-    fn bne(&mut self, mode: AddressingMode) -> usize {
-        self.branch(mode, !self.flag_set(CPUFlags::Zero))
+    fn bne(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.branch(bus, mode, !self.flag_set(CPUFlags::Zero))
     }
 
-    fn bpl(&mut self, mode: AddressingMode) -> usize {
-        self.branch(mode, !self.flag_set(CPUFlags::Negative))
+    fn bpl(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.branch(bus, mode, !self.flag_set(CPUFlags::Negative))
     }
 
-    fn bmi(&mut self, mode: AddressingMode) -> usize {
-        self.branch(mode, self.flag_set(CPUFlags::Negative))
+    fn bmi(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.branch(bus, mode, self.flag_set(CPUFlags::Negative))
     }
 
-    fn bvc(&mut self, mode: AddressingMode) -> usize {
-        self.branch(mode, !self.flag_set(CPUFlags::Overflow))
+    fn bvc(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.branch(bus, mode, !self.flag_set(CPUFlags::Overflow))
     }
 
-    fn bvs(&mut self, mode: AddressingMode) -> usize {
-        self.branch(mode, self.flag_set(CPUFlags::Overflow))
+    fn bvs(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.branch(bus, mode, self.flag_set(CPUFlags::Overflow))
     }
 
     // Jump
-    fn jmp(&mut self, mode: AddressingMode) -> usize {
-        let addr = self.get_address(mode);
+    fn jmp(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let addr = self.get_address(bus, mode);
         self.pc = addr as u16;
 
         match mode {
@@ -474,80 +474,80 @@ impl CPU {
         }
     }
 
-    fn jsr(&mut self, mode: AddressingMode) -> usize {
+    fn jsr(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         let ret_target = self.pc + 2;
-        self.push16(ret_target);
+        self.push16(bus, ret_target);
 
-        let jmp_target = self.get_address(mode);
+        let jmp_target = self.get_address(bus, mode);
         self.pc = jmp_target as u16;
 
         6
     }
 
-    fn rts(&mut self, mode: AddressingMode) -> usize {
-        let ret_target = self.pop16();
+    fn rts(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        let ret_target = self.pop16(bus);
         self.pc = ret_target + 1;
 
         6
     }
 
-    fn brk(&mut self, mode: AddressingMode) -> usize {
+    fn brk(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         let ret_target = self.pc + 2;
-        self.push16(ret_target);
+        self.push16(bus, ret_target);
 
-        self.push8(self.p | nth_bit::<u8>(4) | nth_bit::<u8>(5));
+        self.push8(bus, self.p | nth_bit::<u8>(4) | nth_bit::<u8>(5));
 
         self.set_flag(CPUFlags::InterruptDisable, true);
-        self.jump_to_interrupt_handler();
+        self.jump_to_interrupt_handler(bus);
 
         7
     }
 
-    fn rti(&mut self, mode: AddressingMode) -> usize {
-        self.p = self.pop8() & !nth_bit::<u8>(4) | nth_bit::<u8>(5);
-        self.pc = self.pop16();
+    fn rti(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.p = self.pop8(bus) & !nth_bit::<u8>(4) | nth_bit::<u8>(5);
+        self.pc = self.pop16(bus);
 
         6
     }
 
     // Stack
-    fn pha(&mut self, mode: AddressingMode) -> usize {
-        self.push8(self.a);
+    fn pha(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.push8(bus, self.a);
         self.advance(mode);
 
         3
     }
 
-    fn pla(&mut self, mode: AddressingMode) -> usize {
-        self.a = self.pop8();
+    fn pla(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.a = self.pop8(bus);
         self.set_zn_flags(self.a);
         self.advance(mode);
 
         4
     }
 
-    fn php(&mut self, mode: AddressingMode) -> usize {
-        self.push8(self.p | nth_bit::<u8>(4));
+    fn php(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.push8(bus, self.p | nth_bit::<u8>(4));
         self.advance(mode);
 
         3
     }
 
-    fn plp(&mut self, mode: AddressingMode) -> usize {
-        self.p = self.pop8() & !nth_bit::<u8>(4) | nth_bit::<u8>(5);
+    fn plp(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
+        self.p = self.pop8(bus) & !nth_bit::<u8>(4) | nth_bit::<u8>(5);
         self.advance(mode);
 
         4
     }
 
-    fn txs(&mut self, mode: AddressingMode) -> usize {
+    fn txs(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.sp = self.x;
         self.advance(mode);
 
         2
     }
 
-    fn tsx(&mut self, mode: AddressingMode) -> usize {
+    fn tsx(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.x = self.sp;
         self.set_zn_flags(self.x);
         self.advance(mode);
@@ -556,48 +556,48 @@ impl CPU {
     }
 
     // Flags
-    fn clc(&mut self, mode: AddressingMode) -> usize {
+    fn clc(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::Carry, false);
         self.advance(mode);
 
         2
     }
-    fn sec(&mut self, mode: AddressingMode) -> usize {
+    fn sec(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::Carry, true);
         self.advance(mode);
 
         2
     }
 
-    fn cli(&mut self, mode: AddressingMode) -> usize {
+    fn cli(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::InterruptDisable, false);
         self.advance(mode);
 
         2
     }
 
-    fn sei(&mut self, mode: AddressingMode) -> usize {
+    fn sei(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::InterruptDisable, true);
         self.advance(mode);
 
         2
     }
 
-    fn cld(&mut self, mode: AddressingMode) -> usize {
+    fn cld(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::Decimal, false);
         self.advance(mode);
 
         2
     }
 
-    fn sed(&mut self, mode: AddressingMode) -> usize {
+    fn sed(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::Decimal, true);
         self.advance(mode);
 
         2
     }
 
-    fn clv(&mut self, mode: AddressingMode) -> usize {
+    fn clv(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.set_flag(CPUFlags::Overflow, false);
         self.advance(mode);
 
@@ -605,212 +605,212 @@ impl CPU {
     }
 
     // Other
-    fn nop(&mut self, mode: AddressingMode) -> usize {
+    fn nop(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
         self.advance(mode);
 
         2
     }
 
-    fn execute(&mut self, opcode: u8) -> Option<usize> {
+    fn execute(&mut self, bus: &mut MemoryBus, opcode: u8) -> Option<usize> {
         Some(match opcode {
-            0x69 => self.adc(AddressingMode::Immediate),
-            0x65 => self.adc(AddressingMode::ZeroPage),
-            0x75 => self.adc(AddressingMode::ZeroPageX),
-            0x6D => self.adc(AddressingMode::Absolute),
-            0x7D => self.adc(AddressingMode::AbsoluteX),
-            0x79 => self.adc(AddressingMode::AbsoluteY),
-            0x61 => self.adc(AddressingMode::IndexedIndirect),
-            0x71 => self.adc(AddressingMode::IndirectIndexed),
+            0x69 => self.adc(bus, AddressingMode::Immediate),
+            0x65 => self.adc(bus, AddressingMode::ZeroPage),
+            0x75 => self.adc(bus, AddressingMode::ZeroPageX),
+            0x6D => self.adc(bus, AddressingMode::Absolute),
+            0x7D => self.adc(bus, AddressingMode::AbsoluteX),
+            0x79 => self.adc(bus, AddressingMode::AbsoluteY),
+            0x61 => self.adc(bus, AddressingMode::IndexedIndirect),
+            0x71 => self.adc(bus, AddressingMode::IndirectIndexed),
 
-            0x29 => self.and(AddressingMode::Immediate),
-            0x25 => self.and(AddressingMode::ZeroPage),
-            0x35 => self.and(AddressingMode::ZeroPageX),
-            0x2D => self.and(AddressingMode::Absolute),
-            0x3D => self.and(AddressingMode::AbsoluteX),
-            0x39 => self.and(AddressingMode::AbsoluteY),
-            0x21 => self.and(AddressingMode::IndexedIndirect),
-            0x31 => self.and(AddressingMode::IndirectIndexed),
+            0x29 => self.and(bus, AddressingMode::Immediate),
+            0x25 => self.and(bus, AddressingMode::ZeroPage),
+            0x35 => self.and(bus, AddressingMode::ZeroPageX),
+            0x2D => self.and(bus, AddressingMode::Absolute),
+            0x3D => self.and(bus, AddressingMode::AbsoluteX),
+            0x39 => self.and(bus, AddressingMode::AbsoluteY),
+            0x21 => self.and(bus, AddressingMode::IndexedIndirect),
+            0x31 => self.and(bus, AddressingMode::IndirectIndexed),
 
-            0x0A => self.asl(AddressingMode::Accumulator),
-            0x06 => self.asl(AddressingMode::ZeroPage),
-            0x16 => self.asl(AddressingMode::ZeroPageX),
-            0x0E => self.asl(AddressingMode::Absolute),
-            0x1E => self.asl(AddressingMode::AbsoluteX),
+            0x0A => self.asl(bus, AddressingMode::Accumulator),
+            0x06 => self.asl(bus, AddressingMode::ZeroPage),
+            0x16 => self.asl(bus, AddressingMode::ZeroPageX),
+            0x0E => self.asl(bus, AddressingMode::Absolute),
+            0x1E => self.asl(bus, AddressingMode::AbsoluteX),
 
-            0x90 => self.bcc(AddressingMode::Relative),
-            0xB0 => self.bcs(AddressingMode::Relative),
-            0xF0 => self.beq(AddressingMode::Relative),
-            0x30 => self.bmi(AddressingMode::Relative),
-            0xD0 => self.bne(AddressingMode::Relative),
-            0x10 => self.bpl(AddressingMode::Relative),
-            0x50 => self.bvc(AddressingMode::Relative),
-            0x70 => self.bvs(AddressingMode::Relative),
+            0x90 => self.bcc(bus, AddressingMode::Relative),
+            0xB0 => self.bcs(bus, AddressingMode::Relative),
+            0xF0 => self.beq(bus, AddressingMode::Relative),
+            0x30 => self.bmi(bus, AddressingMode::Relative),
+            0xD0 => self.bne(bus, AddressingMode::Relative),
+            0x10 => self.bpl(bus, AddressingMode::Relative),
+            0x50 => self.bvc(bus, AddressingMode::Relative),
+            0x70 => self.bvs(bus, AddressingMode::Relative),
 
-            0x24 => self.bit(AddressingMode::ZeroPage),
-            0x2C => self.bit(AddressingMode::Absolute),
+            0x24 => self.bit(bus, AddressingMode::ZeroPage),
+            0x2C => self.bit(bus, AddressingMode::Absolute),
 
-            0x00 => self.brk(AddressingMode::Immediate),
+            0x00 => self.brk(bus, AddressingMode::Immediate),
 
-            0x18 => self.clc(AddressingMode::Implied),
-            0xD8 => self.cld(AddressingMode::Implied),
-            0x58 => self.cli(AddressingMode::Implied),
-            0xB8 => self.clv(AddressingMode::Implied),
+            0x18 => self.clc(bus, AddressingMode::Implied),
+            0xD8 => self.cld(bus, AddressingMode::Implied),
+            0x58 => self.cli(bus, AddressingMode::Implied),
+            0xB8 => self.clv(bus, AddressingMode::Implied),
 
-            0xC9 => self.cmp(AddressingMode::Immediate),
-            0xC5 => self.cmp(AddressingMode::ZeroPage),
-            0xD5 => self.cmp(AddressingMode::ZeroPageX),
-            0xCD => self.cmp(AddressingMode::Absolute),
-            0xDD => self.cmp(AddressingMode::AbsoluteX),
-            0xD9 => self.cmp(AddressingMode::AbsoluteY),
-            0xC1 => self.cmp(AddressingMode::IndexedIndirect),
-            0xD1 => self.cmp(AddressingMode::IndirectIndexed),
+            0xC9 => self.cmp(bus, AddressingMode::Immediate),
+            0xC5 => self.cmp(bus, AddressingMode::ZeroPage),
+            0xD5 => self.cmp(bus, AddressingMode::ZeroPageX),
+            0xCD => self.cmp(bus, AddressingMode::Absolute),
+            0xDD => self.cmp(bus, AddressingMode::AbsoluteX),
+            0xD9 => self.cmp(bus, AddressingMode::AbsoluteY),
+            0xC1 => self.cmp(bus, AddressingMode::IndexedIndirect),
+            0xD1 => self.cmp(bus, AddressingMode::IndirectIndexed),
 
-            0xE0 => self.cpx(AddressingMode::Immediate),
-            0xE4 => self.cpx(AddressingMode::ZeroPage),
-            0xEC => self.cpx(AddressingMode::Absolute),
+            0xE0 => self.cpx(bus, AddressingMode::Immediate),
+            0xE4 => self.cpx(bus, AddressingMode::ZeroPage),
+            0xEC => self.cpx(bus, AddressingMode::Absolute),
 
-            0xC0 => self.cpy(AddressingMode::Immediate),
-            0xC4 => self.cpy(AddressingMode::ZeroPage),
-            0xCC => self.cpy(AddressingMode::Absolute),
+            0xC0 => self.cpy(bus, AddressingMode::Immediate),
+            0xC4 => self.cpy(bus, AddressingMode::ZeroPage),
+            0xCC => self.cpy(bus, AddressingMode::Absolute),
 
-            0xE6 => self.inc(AddressingMode::ZeroPage),
-            0xF6 => self.inc(AddressingMode::ZeroPageX),
-            0xEE => self.inc(AddressingMode::Absolute),
-            0xFE => self.inc(AddressingMode::AbsoluteX),
+            0xE6 => self.inc(bus, AddressingMode::ZeroPage),
+            0xF6 => self.inc(bus, AddressingMode::ZeroPageX),
+            0xEE => self.inc(bus, AddressingMode::Absolute),
+            0xFE => self.inc(bus, AddressingMode::AbsoluteX),
 
-            0xC6 => self.dec(AddressingMode::ZeroPage),
-            0xD6 => self.dec(AddressingMode::ZeroPageX),
-            0xCE => self.dec(AddressingMode::Absolute),
-            0xDE => self.dec(AddressingMode::AbsoluteX),
+            0xC6 => self.dec(bus, AddressingMode::ZeroPage),
+            0xD6 => self.dec(bus, AddressingMode::ZeroPageX),
+            0xCE => self.dec(bus, AddressingMode::Absolute),
+            0xDE => self.dec(bus, AddressingMode::AbsoluteX),
 
-            0xE8 => self.inx(AddressingMode::Implied),
-            0xCA => self.dex(AddressingMode::Implied),
+            0xE8 => self.inx(bus, AddressingMode::Implied),
+            0xCA => self.dex(bus, AddressingMode::Implied),
 
-            0xC8 => self.iny(AddressingMode::Implied),
-            0x88 => self.dey(AddressingMode::Implied),
+            0xC8 => self.iny(bus, AddressingMode::Implied),
+            0x88 => self.dey(bus, AddressingMode::Implied),
 
-            0x49 => self.eor(AddressingMode::Immediate),
-            0x45 => self.eor(AddressingMode::ZeroPage),
-            0x55 => self.eor(AddressingMode::ZeroPageX),
-            0x4D => self.eor(AddressingMode::Absolute),
-            0x5D => self.eor(AddressingMode::AbsoluteX),
-            0x59 => self.eor(AddressingMode::AbsoluteY),
-            0x41 => self.eor(AddressingMode::IndexedIndirect),
-            0x51 => self.eor(AddressingMode::IndirectIndexed),
+            0x49 => self.eor(bus, AddressingMode::Immediate),
+            0x45 => self.eor(bus, AddressingMode::ZeroPage),
+            0x55 => self.eor(bus, AddressingMode::ZeroPageX),
+            0x4D => self.eor(bus, AddressingMode::Absolute),
+            0x5D => self.eor(bus, AddressingMode::AbsoluteX),
+            0x59 => self.eor(bus, AddressingMode::AbsoluteY),
+            0x41 => self.eor(bus, AddressingMode::IndexedIndirect),
+            0x51 => self.eor(bus, AddressingMode::IndirectIndexed),
 
-            0x4C => self.jmp(AddressingMode::Absolute),
-            0x6C => self.jmp(AddressingMode::Indirect),
+            0x4C => self.jmp(bus, AddressingMode::Absolute),
+            0x6C => self.jmp(bus, AddressingMode::Indirect),
 
-            0x20 => self.jsr(AddressingMode::Absolute),
+            0x20 => self.jsr(bus, AddressingMode::Absolute),
 
-            0xA9 => self.lda(AddressingMode::Immediate),
-            0xA5 => self.lda(AddressingMode::ZeroPage),
-            0xB5 => self.lda(AddressingMode::ZeroPageX),
-            0xAD => self.lda(AddressingMode::Absolute),
-            0xBD => self.lda(AddressingMode::AbsoluteX),
-            0xB9 => self.lda(AddressingMode::AbsoluteY),
-            0xA1 => self.lda(AddressingMode::IndexedIndirect),
-            0xB1 => self.lda(AddressingMode::IndirectIndexed),
+            0xA9 => self.lda(bus, AddressingMode::Immediate),
+            0xA5 => self.lda(bus, AddressingMode::ZeroPage),
+            0xB5 => self.lda(bus, AddressingMode::ZeroPageX),
+            0xAD => self.lda(bus, AddressingMode::Absolute),
+            0xBD => self.lda(bus, AddressingMode::AbsoluteX),
+            0xB9 => self.lda(bus, AddressingMode::AbsoluteY),
+            0xA1 => self.lda(bus, AddressingMode::IndexedIndirect),
+            0xB1 => self.lda(bus, AddressingMode::IndirectIndexed),
 
-            0xA2 => self.ldx(AddressingMode::Immediate),
-            0xA6 => self.ldx(AddressingMode::ZeroPage),
-            0xB6 => self.ldx(AddressingMode::ZeroPageY),
-            0xAE => self.ldx(AddressingMode::Absolute),
-            0xBE => self.ldx(AddressingMode::AbsoluteY),
+            0xA2 => self.ldx(bus, AddressingMode::Immediate),
+            0xA6 => self.ldx(bus, AddressingMode::ZeroPage),
+            0xB6 => self.ldx(bus, AddressingMode::ZeroPageY),
+            0xAE => self.ldx(bus, AddressingMode::Absolute),
+            0xBE => self.ldx(bus, AddressingMode::AbsoluteY),
 
-            0xA0 => self.ldy(AddressingMode::Immediate),
-            0xA4 => self.ldy(AddressingMode::ZeroPage),
-            0xB4 => self.ldy(AddressingMode::ZeroPageX),
-            0xAC => self.ldy(AddressingMode::Absolute),
-            0xBC => self.ldy(AddressingMode::AbsoluteX),
+            0xA0 => self.ldy(bus, AddressingMode::Immediate),
+            0xA4 => self.ldy(bus, AddressingMode::ZeroPage),
+            0xB4 => self.ldy(bus, AddressingMode::ZeroPageX),
+            0xAC => self.ldy(bus, AddressingMode::Absolute),
+            0xBC => self.ldy(bus, AddressingMode::AbsoluteX),
 
-            0x4A => self.lsr(AddressingMode::Accumulator),
-            0x46 => self.lsr(AddressingMode::ZeroPage),
-            0x56 => self.lsr(AddressingMode::ZeroPageX),
-            0x4E => self.lsr(AddressingMode::Absolute),
-            0x5E => self.lsr(AddressingMode::AbsoluteX),
+            0x4A => self.lsr(bus, AddressingMode::Accumulator),
+            0x46 => self.lsr(bus, AddressingMode::ZeroPage),
+            0x56 => self.lsr(bus, AddressingMode::ZeroPageX),
+            0x4E => self.lsr(bus, AddressingMode::Absolute),
+            0x5E => self.lsr(bus, AddressingMode::AbsoluteX),
 
-            0xEA => self.nop(AddressingMode::Implied),
+            0xEA => self.nop(bus, AddressingMode::Implied),
 
-            0x09 => self.ora(AddressingMode::Immediate),
-            0x05 => self.ora(AddressingMode::ZeroPage),
-            0x15 => self.ora(AddressingMode::ZeroPageX),
-            0x0D => self.ora(AddressingMode::Absolute),
-            0x1D => self.ora(AddressingMode::AbsoluteX),
-            0x19 => self.ora(AddressingMode::AbsoluteY),
-            0x01 => self.ora(AddressingMode::IndexedIndirect),
-            0x11 => self.ora(AddressingMode::IndirectIndexed),
+            0x09 => self.ora(bus, AddressingMode::Immediate),
+            0x05 => self.ora(bus, AddressingMode::ZeroPage),
+            0x15 => self.ora(bus, AddressingMode::ZeroPageX),
+            0x0D => self.ora(bus, AddressingMode::Absolute),
+            0x1D => self.ora(bus, AddressingMode::AbsoluteX),
+            0x19 => self.ora(bus, AddressingMode::AbsoluteY),
+            0x01 => self.ora(bus, AddressingMode::IndexedIndirect),
+            0x11 => self.ora(bus, AddressingMode::IndirectIndexed),
 
-            0x48 => self.pha(AddressingMode::Implied),
-            0x08 => self.php(AddressingMode::Implied),
-            0x68 => self.pla(AddressingMode::Implied),
-            0x28 => self.plp(AddressingMode::Implied),
+            0x48 => self.pha(bus, AddressingMode::Implied),
+            0x08 => self.php(bus, AddressingMode::Implied),
+            0x68 => self.pla(bus, AddressingMode::Implied),
+            0x28 => self.plp(bus, AddressingMode::Implied),
 
-            0x2A => self.rol(AddressingMode::Accumulator),
-            0x26 => self.rol(AddressingMode::ZeroPage),
-            0x36 => self.rol(AddressingMode::ZeroPageX),
-            0x2E => self.rol(AddressingMode::Absolute),
-            0x3E => self.rol(AddressingMode::AbsoluteX),
+            0x2A => self.rol(bus, AddressingMode::Accumulator),
+            0x26 => self.rol(bus, AddressingMode::ZeroPage),
+            0x36 => self.rol(bus, AddressingMode::ZeroPageX),
+            0x2E => self.rol(bus, AddressingMode::Absolute),
+            0x3E => self.rol(bus, AddressingMode::AbsoluteX),
 
-            0x6A => self.ror(AddressingMode::Accumulator),
-            0x66 => self.ror(AddressingMode::ZeroPage),
-            0x76 => self.ror(AddressingMode::ZeroPageX),
-            0x6E => self.ror(AddressingMode::Absolute),
-            0x7E => self.ror(AddressingMode::AbsoluteX),
+            0x6A => self.ror(bus, AddressingMode::Accumulator),
+            0x66 => self.ror(bus, AddressingMode::ZeroPage),
+            0x76 => self.ror(bus, AddressingMode::ZeroPageX),
+            0x6E => self.ror(bus, AddressingMode::Absolute),
+            0x7E => self.ror(bus, AddressingMode::AbsoluteX),
 
-            0x40 => self.rti(AddressingMode::Implied),
+            0x40 => self.rti(bus, AddressingMode::Implied),
 
-            0x60 => self.rts(AddressingMode::Implied),
+            0x60 => self.rts(bus, AddressingMode::Implied),
 
-            0xE9 => self.sbc(AddressingMode::Immediate),
-            0xE5 => self.sbc(AddressingMode::ZeroPage),
-            0xF5 => self.sbc(AddressingMode::ZeroPageX),
-            0xED => self.sbc(AddressingMode::Absolute),
-            0xFD => self.sbc(AddressingMode::AbsoluteX),
-            0xF9 => self.sbc(AddressingMode::AbsoluteY),
-            0xE1 => self.sbc(AddressingMode::IndexedIndirect),
-            0xF1 => self.sbc(AddressingMode::IndirectIndexed),
+            0xE9 => self.sbc(bus, AddressingMode::Immediate),
+            0xE5 => self.sbc(bus, AddressingMode::ZeroPage),
+            0xF5 => self.sbc(bus, AddressingMode::ZeroPageX),
+            0xED => self.sbc(bus, AddressingMode::Absolute),
+            0xFD => self.sbc(bus, AddressingMode::AbsoluteX),
+            0xF9 => self.sbc(bus, AddressingMode::AbsoluteY),
+            0xE1 => self.sbc(bus, AddressingMode::IndexedIndirect),
+            0xF1 => self.sbc(bus, AddressingMode::IndirectIndexed),
 
-            0x38 => self.sec(AddressingMode::Implied),
-            0xF8 => self.sed(AddressingMode::Implied),
-            0x78 => self.sei(AddressingMode::Implied),
+            0x38 => self.sec(bus, AddressingMode::Implied),
+            0xF8 => self.sed(bus, AddressingMode::Implied),
+            0x78 => self.sei(bus, AddressingMode::Implied),
 
-            0x85 => self.sta(AddressingMode::ZeroPage),
-            0x95 => self.sta(AddressingMode::ZeroPageX),
-            0x8D => self.sta(AddressingMode::Absolute),
-            0x9D => self.sta(AddressingMode::AbsoluteX),
-            0x99 => self.sta(AddressingMode::AbsoluteY),
-            0x81 => self.sta(AddressingMode::IndexedIndirect),
-            0x91 => self.sta(AddressingMode::IndirectIndexed),
+            0x85 => self.sta(bus, AddressingMode::ZeroPage),
+            0x95 => self.sta(bus, AddressingMode::ZeroPageX),
+            0x8D => self.sta(bus, AddressingMode::Absolute),
+            0x9D => self.sta(bus, AddressingMode::AbsoluteX),
+            0x99 => self.sta(bus, AddressingMode::AbsoluteY),
+            0x81 => self.sta(bus, AddressingMode::IndexedIndirect),
+            0x91 => self.sta(bus, AddressingMode::IndirectIndexed),
 
-            0x86 => self.stx(AddressingMode::ZeroPage),
-            0x96 => self.stx(AddressingMode::ZeroPageY),
-            0x8E => self.stx(AddressingMode::Absolute),
+            0x86 => self.stx(bus, AddressingMode::ZeroPage),
+            0x96 => self.stx(bus, AddressingMode::ZeroPageY),
+            0x8E => self.stx(bus, AddressingMode::Absolute),
 
-            0x84 => self.sty(AddressingMode::ZeroPage),
-            0x94 => self.sty(AddressingMode::ZeroPageX),
-            0x8C => self.sty(AddressingMode::Absolute),
+            0x84 => self.sty(bus, AddressingMode::ZeroPage),
+            0x94 => self.sty(bus, AddressingMode::ZeroPageX),
+            0x8C => self.sty(bus, AddressingMode::Absolute),
 
-            0xAA => self.tax(AddressingMode::Implied),
+            0xAA => self.tax(bus, AddressingMode::Implied),
 
-            0xA8 => self.tay(AddressingMode::Implied),
+            0xA8 => self.tay(bus, AddressingMode::Implied),
 
-            0xBA => self.tsx(AddressingMode::Implied),
+            0xBA => self.tsx(bus, AddressingMode::Implied),
 
-            0x8A => self.txa(AddressingMode::Implied),
+            0x8A => self.txa(bus, AddressingMode::Implied),
 
-            0x9A => self.txs(AddressingMode::Implied),
+            0x9A => self.txs(bus, AddressingMode::Implied),
 
-            0x98 => self.tya(AddressingMode::Implied),
+            0x98 => self.tya(bus, AddressingMode::Implied),
 
             _ => return None,
         })
     }
 
-    pub fn step(&mut self) -> bool {
-        let opcode = self.ram[self.pc as usize];
+    pub fn step(&mut self, bus: &mut MemoryBus) -> bool {
+        let opcode = self.read8(bus, self.pc);
 
-        if let Some(cycles) = self.execute(opcode) {
+        if let Some(cycles) = self.execute(bus, opcode) {
             self.cycles += cycles;
 
             return true;
