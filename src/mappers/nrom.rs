@@ -34,10 +34,10 @@ impl Mapper for NROM {
     }
     
     fn vram_read(&mut self, addr: u16) -> u8 {
-        self.vram[addr as usize]
+        self.vram[addr as usize % 0x0800]
     }
     
     fn vram_write(&mut self, addr: u16, value: u8) {
-        self.vram[addr as usize] = value;
+        self.vram[addr as usize % 0x0800] = value;
     }
 }

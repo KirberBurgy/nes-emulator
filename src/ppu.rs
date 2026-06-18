@@ -50,6 +50,11 @@ pub struct PPU {
 
     pub buffer:     u8,
 
+    pub nt_byte:    u8,
+    pub at_byte:    u8,
+    pub pt_low:     u8,
+    pub pt_high:    u8,
+
     pub oam_addr:   u8,
     pub oam:        [u8; 0x100],
 
@@ -76,6 +81,11 @@ impl PPU {
             x:          0,
             w:          false,
 
+            nt_byte:    0,
+            at_byte:    0,
+            pt_low:     0,
+            pt_high:    0,
+
             buffer:     0,
 
             oam_addr:   0,
@@ -84,9 +94,9 @@ impl PPU {
             palette:    [0; 0x020],
 
             cycle:      0,
-            scanline:   261,
+            scanline:   0,
 
-            odd_frame:  false,
+            odd_frame:  true,
 
             cart
         }
@@ -104,7 +114,7 @@ impl PPU {
     }
 
     fn rendering(&self) -> bool {
-        bit_set(self.mask, PPUMaskFlags::EnableBg as usize) &&
+        bit_set(self.mask, PPUMaskFlags::EnableBg as usize) ||
         bit_set(self.mask, PPUMaskFlags::EnableSprites as usize)
     }
 
@@ -275,51 +285,105 @@ impl PPU {
         self.oam = new;
     }
 
-    pub fn tick(&mut self) {
-        match self.scanline {
-            0..=239 => match self.cycle {
-                // Idle cycle
-                0   => {}
+    fn perform_fetches(&mut self) {
+        match self.cycle % 8 {
+            1 => {
+                let nametable_address = 0x2000 | get_bits(self.v, 0..12);
+                self.nt_byte = self.cart.borrow_mut().vram_read(nametable_address);
+            }
+            3 => {
+                let attribute_address = 
+                    0x23C0                  |
+                    (self.v & 0x0C00)       |
+                    ((self.v >> 4) & 0x38)  | 
+                    ((self.v >> 2) & 0x07);
 
-                256 => self.increment_y(),
-                257 => {
-                    self.v = copy_bit_ranges(self.v, self.t, &[0..5, 10..11]);
+                self.at_byte = self.cart.borrow_mut().vram_read(attribute_address);
+            }
+            5 => {
+                let base_address =
+                    if bit_set(self.control, PPUControlFlags::BgTableAddress as usize) { 0x1000 }
+                    else { 0x0000 };
+
+                let bg_pattern_lo_addr = 
+                    base_address +
+                    (self.nt_byte as u16) * 16 +
+                    get_bits(self.v, 12..15);
+
+                self.pt_low = self.cart.borrow_mut().chr_read(bg_pattern_lo_addr);
+            }
+            7 => {
+                let base_address =
+                    if bit_set(self.control, PPUControlFlags::BgTableAddress as usize) { 0x1000 }
+                    else { 0x0000 };
+
+                let bg_pattern_lo_addr = 
+                    base_address +
+                    (self.nt_byte as u16) * 16 +
+                    get_bits(self.v, 12..15);
+
+                self.pt_low = self.cart.borrow_mut().chr_read(bg_pattern_lo_addr + 8);
+            }
+            0 => {
+                self.increment_x();
+
+                // reload_shifters();
+            }
+            _ => {}
+        }
+    }
+
+    pub fn tick(&mut self) {
+        if self.cycle == 0 {
+            self.cycle += 1;
+
+            return;
+        }
+
+        match self.scanline {
+            0..=239 => {
+                if  (1..=256).contains(&self.cycle)     || 
+                    (321..=336).contains(&self.cycle)   || 
+                    (337..=340).contains(&self.cycle)
+                {
+                    self.perform_fetches();
                 }
 
-                _ => match self.cycle % 8 {
-                    1 => {} // fetch_nametable(),
-                    3 => {} // fetch_attribute(),
-                    5 => {} // fetch_pattern_low(),
-                    7 => {} // fetch_pattern_high(),
-                    0 => {} // reload_shifters(),
-                    _ => {}
+                if self.cycle == 256 {
+                    self.increment_y();
+                }
+
+                if self.cycle == 257 {
+                    self.v = copy_bit_ranges(self.v, self.t, &[0..5, 10..11]);
                 }
             }
 
             241 if self.cycle == 1 =>
                 self.status = set_bit(self.status, PPUStatusFlags::VBlank as usize, true),
 
-            261 => match self.cycle {
-                1 => {
+            261 => {
+                self.perform_fetches();
+
+                if self.cycle == 1 {
                     self.status = set_bit(self.status, PPUStatusFlags::Sprite0Hit as usize, false);
+                    self.status = set_bit(self.status, PPUStatusFlags::SpriteOverflow as usize, false);
                     self.status = set_bit(self.status, PPUStatusFlags::VBlank as usize, false);
                 }
 
+                if self.rendering() {
+                    if self.cycle >= 280 && self.cycle <= 304 {
+                        self.v = copy_bit_ranges(self.v, self.t, &[5..10, 11..15]);
+                    }
+                    
+                    if self.cycle == 339 && self.odd_frame {
+                        self.cycle = 0;
+                        self.scanline = 0;
 
-                280..=304 if self.rendering() => {
-                    self.v = copy_bit_ranges(self.v, self.t, &[5..10, 11..15]);
+                        self.odd_frame = false;
+
+                        return;
+                    }
                 }
-
-                339 if self.odd_frame && self.rendering() => {
-                    self.cycle = 0;
-                    self.scanline = 0;
-
-                    self.odd_frame = !self.odd_frame;
-
-                    return;
-                }
-
-                _ => {}
             }
 
             _ => {}

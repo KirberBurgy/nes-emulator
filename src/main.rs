@@ -19,16 +19,13 @@ fn main() {
     let mut memory_bus = MemoryBus::new(donkey_kong);
     let mut cpu = CPU::new();
 
-    cpu.jump_to_startup(&mut memory_bus);
-    cpu.debug();
-    println!();
+    let old = memory_bus.ppu.odd_frame;
+    let mut cycles = 0;
 
-    for i in 0..12 {
-        cpu.step(&mut memory_bus);
-        cpu.debug();
-        println!();
+    while old == memory_bus.ppu.odd_frame {
+        memory_bus.ppu.tick();
+        cycles += 1;
     }
-
-    cpu.debug();
-    println!();
+    
+    println!("{}", cycles);
 }
