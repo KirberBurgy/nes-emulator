@@ -25,6 +25,10 @@ pub fn set_bit<T: PrimInt>(val: T, bit: usize, to: bool) -> T {
     }
 }
 
+pub fn toggle_bit<T: PrimInt>(val: T, bit: usize) -> T {
+    val ^ nth_bit(bit)
+}
+
 pub fn get_bits<T: PrimInt>(val: T, range: Range<usize>) -> T {
     let width = range.end - range.start;
     let mask = (T::one() << width) - T::one();

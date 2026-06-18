@@ -1,4 +1,6 @@
-use crate::{bit_utils::{bit_set, get_bits, set_bit, set_bits}, cartridge::Cartridge};
+use std::{cell::RefCell, rc::Rc};
+
+use crate::{bit_utils::{bit_set, get_bits, set_bit, set_bits, toggle_bit}, cartridge::Cartridge, memory_bus::MemoryBus};
 
 
 #[repr(usize)]
@@ -51,26 +53,46 @@ pub struct PPU {
     pub oam_addr:   u8,
     pub oam:        [u8; 0x100],
 
-    pub palette:    [u8; 0x020]
+    pub palette:    [u8; 0x020],
+
+    pub cycle:      usize,
+    pub scanline:   usize,
+
+    pub odd_frame:  bool,
+
+    pub cart:       Rc<RefCell<Cartridge>>
 }
 
 impl PPU {
-    pub fn new() -> PPU {
+    pub fn new(cart: Rc<RefCell<Cartridge>>) -> PPU {
         PPU
         {
             control:    0,
             mask:       0,
             status:     0,
+
             v:          0,
             t:          0,
             x:          0,
             w:          false,
+
             buffer:     0,
+
             oam_addr:   0,
             oam:        [0; 0x100],
-            palette:    [0; 0x020]
+
+            palette:    [0; 0x020],
+
+            cycle:      0,
+            scanline:   261,
+
+            odd_frame:  false,
+
+            cart
         }
     }
+
+
 
     fn increment(&self) -> u16 {
         if bit_set(self.control, PPUControlFlags::VRAMIncrement as usize) {
@@ -79,6 +101,49 @@ impl PPU {
         else { 
             1 
         }
+    }
+
+    fn rendering(&self) -> bool {
+        bit_set(self.mask, PPUMaskFlags::EnableBg as usize) &&
+        bit_set(self.mask, PPUMaskFlags::EnableSprites as usize)
+    }
+
+    fn increment_x(&mut self) {
+        let mut coarse_x = get_bits(self.v, 0..5);
+
+        if coarse_x < 31 {
+            coarse_x += 1;
+        }
+        else {
+            coarse_x = 0;
+            self.v = toggle_bit(self.v, 10);
+        }
+
+        self.v = set_bits(self.v, 0..5, coarse_x);
+    }
+
+    fn increment_y(&mut self) {
+        let fine_y = get_bits(self.v, 12..15);
+
+        if fine_y < 7 {
+            self.v = set_bits(self.v, 12..15, fine_y + 1);
+
+            return;
+        }
+
+        self.v = set_bits(self.v, 12..15, 0);
+        let mut coarse_y = get_bits(self.v, 5..10);
+
+        match coarse_y {
+            29 => {
+                coarse_y = 0;
+                self.v ^= 0x0800;
+            }
+            31 => coarse_y = 0,
+            _ => coarse_y += 1,
+        }
+
+        self.v = set_bits(self.v, 5..10, coarse_y);
     }
 
 
@@ -144,22 +209,22 @@ impl PPU {
         addr as usize
     }
 
-    fn ppu_read(cart: &mut Cartridge, addr: u16) -> u8 {
+    fn ppu_read(&mut self, addr: u16) -> u8 {
         match addr {
-            0x0000..0x2000 => cart.chr_read(addr),
-            0x2000..0x3F00 => cart.vram_read(addr),
+            0x0000..0x2000 => self.cart.borrow_mut().chr_read(addr),
+            0x2000..0x3F00 => self.cart.borrow_mut().vram_read(addr),
 
             _ => 0
         }
     }
 
 
-    pub fn ppudata_read(&mut self, cart: &mut Cartridge) -> u8 {
+    pub fn ppudata_read(&mut self) -> u8 {
         let byte = match self.v {
             0x0000..0x3F00 => {
                 let ret = self.buffer;
 
-                self.buffer = Self::ppu_read(cart, self.v);
+                self.buffer = self.ppu_read(self.v);
 
                 ret
             }
@@ -167,7 +232,7 @@ impl PPU {
             0x3F00..0x4000 => {
                 let ret = self.palette[Self::palette_address(self.v)];
 
-                self.buffer = Self::ppu_read(cart, self.v - 0x1000);
+                self.buffer = self.ppu_read(self.v - 0x1000);
 
                 ret
             }
@@ -180,10 +245,10 @@ impl PPU {
         byte
     }
 
-    pub fn ppudata_write(&mut self, cart: &mut Cartridge, to: u8) {
+    pub fn ppudata_write(&mut self, to: u8) {
         match self.v {
-            0x0000..0x2000 => cart.chr_write(self.v, to),
-            0x2000..0x3F00 => cart.vram_write(self.v, to),
+            0x0000..0x2000 => self.cart.borrow_mut().chr_write(self.v, to),
+            0x2000..0x3F00 => self.cart.borrow_mut().vram_write(self.v, to),
             0x3F00..0x4000 => self.palette[Self::palette_address(self.v)] = to,
 
             _ => unreachable!()

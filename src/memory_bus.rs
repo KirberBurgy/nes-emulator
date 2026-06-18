@@ -1,14 +1,18 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{cartridge::Cartridge, ppu::PPU};
 
 pub struct MemoryBus {
     pub ram:        Box<[u8; 0x0800]>,
-    pub cartridge:  Cartridge,
+    pub cartridge:  Rc<RefCell<Cartridge>>,
     pub ppu:        PPU
 }
 
 impl MemoryBus {
     pub fn new(cartridge: Cartridge) -> MemoryBus {
-        MemoryBus { ram: Box::new([0; 0x0800]), cartridge, ppu: PPU::new() }
+        let cell = Rc::new(RefCell::new(cartridge));
+
+        MemoryBus { ram: Box::new([0; 0x0800]), ppu: PPU::new(cell.clone()), cartridge: cell }
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -18,12 +22,12 @@ impl MemoryBus {
             0x2000..0x4000  => match addr % 0x0008 {
                 0x0002 => self.ppu.ppustatus_read(),
                 0x0004 => self.ppu.oamdata_read(),
-                0x0007 => self.ppu.ppudata_read(&mut self.cartridge),
+                0x0007 => self.ppu.ppudata_read(),
 
                 _ => unreachable!()
             }
 
-            0x8000..        => self.cartridge.prg_read(addr),
+            0x8000..        => self.cartridge.borrow_mut().prg_read(addr),
 
             _ => 0 
         }
@@ -40,7 +44,7 @@ impl MemoryBus {
                 0x0004 => self.ppu.oamdata_write(value),
                 0x0005 => self.ppu.ppuscroll_write(value),
                 0x0006 => self.ppu.ppuaddr_write(value),
-                0x0007 => self.ppu.ppudata_write(&mut self.cartridge, value),
+                0x0007 => self.ppu.ppudata_write(value),
 
                 _ => unreachable!()
             },
@@ -56,7 +60,7 @@ impl MemoryBus {
                 self.ppu.overwrite_oam(new_oam);
             }
 
-            0x8000..        => self.cartridge.prg_write(addr, value),
+            0x8000..        => self.cartridge.borrow_mut().prg_write(addr, value),
 
             _ => {}
         }
