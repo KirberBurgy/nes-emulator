@@ -492,15 +492,7 @@ impl CPU {
     }
 
     fn brk(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
-        let ret_target = self.pc + 2;
-        self.push16(bus, ret_target);
-
-        self.push8(bus, self.p | nth_bit::<u8>(4) | nth_bit::<u8>(5));
-
-        self.set_flag(CPUFlags::InterruptDisable, true);
-        self.jump_to_interrupt_handler(bus);
-
-        7
+        self.jump_to_handler(bus, 0xFFFE)
     }
 
     fn rti(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {

@@ -5,14 +5,15 @@ use crate::{cartridge::Cartridge, ppu::PPU};
 pub struct MemoryBus {
     pub ram:        Box<[u8; 0x0800]>,
     pub cartridge:  Rc<RefCell<Cartridge>>,
-    pub ppu:        PPU
+    pub ppu:        PPU,
+    pub dma_signal: bool
 }
 
 impl MemoryBus {
     pub fn new(cartridge: Cartridge) -> MemoryBus {
         let cell = Rc::new(RefCell::new(cartridge));
 
-        MemoryBus { ram: Box::new([0; 0x0800]), ppu: PPU::new(cell.clone()), cartridge: cell }
+        MemoryBus { ram: Box::new([0; 0x0800]), ppu: PPU::new(cell.clone()), cartridge: cell, dma_signal: false }
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -58,11 +59,16 @@ impl MemoryBus {
                 }
 
                 self.ppu.overwrite_oam(new_oam);
+                self.dma_signal = true;
             }
 
             0x8000..        => self.cartridge.borrow_mut().prg_write(addr, value),
 
             _ => {}
         }
+    }
+
+    pub fn stop_dma_signal(&mut self) {
+        self.dma_signal = false;
     }
 }

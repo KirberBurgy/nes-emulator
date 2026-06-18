@@ -1,4 +1,4 @@
-use crate::{cartridge::Cartridge, cpu::CPU, memory_bus::MemoryBus};
+use crate::{cartridge::Cartridge, cpu::CPU, memory_bus::MemoryBus, nes::NES};
 
 pub mod bit_utils;
 
@@ -14,18 +14,9 @@ pub mod mappers;
 
 pub mod cartridge;
 
+pub mod nes;
+
 fn main() {
     let donkey_kong = Cartridge::load("tests/roms/Donkey Kong.nes").unwrap();
-    let mut memory_bus = MemoryBus::new(donkey_kong);
-    let mut cpu = CPU::new();
-
-    let old = memory_bus.ppu.odd_frame;
-    let mut cycles = 0;
-
-    while old == memory_bus.ppu.odd_frame {
-        memory_bus.ppu.tick();
-        cycles += 1;
-    }
-    
-    println!("{}", cycles);
+    let mut nes = NES::new(donkey_kong);
 }

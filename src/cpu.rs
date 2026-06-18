@@ -1,4 +1,4 @@
-use crate::{bit_utils::{address_from_bytes, bit_set, get_bits, set_bit}, memory_bus::MemoryBus};
+use crate::{bit_utils::{address_from_bytes, bit_set, get_bits, nth_bit, set_bit}, memory_bus::MemoryBus};
 
 
 #[derive(Copy, Clone, Debug)]
@@ -120,13 +120,25 @@ impl CPU {
         (hi << 8) | lo
     }
 
-    
-    pub fn jump_to_interrupt_handler(&mut self, bus: &mut MemoryBus) {
-        self.pc = self.read16(bus, 0xFFFE);
+    pub(crate) fn jump_to_handler(&mut self, bus: &mut MemoryBus, lsb_addr: u16) -> usize {
+        let ret_target = self.pc + 2;
+        self.push16(bus, ret_target);
+
+        self.push8(bus, self.p | nth_bit::<u8>(4) | nth_bit::<u8>(5));
+
+        self.set_flag(CPUFlags::InterruptDisable, true);
+        self.pc = self.read16(bus, lsb_addr);
+
+        7
+    }
+
+    pub fn jump_to_nmi_handler(&mut self, bus: &mut MemoryBus) {
+        self.delay += self.jump_to_handler(bus, 0xFFFA);
     }
 
     pub fn jump_to_startup(&mut self, bus: &mut MemoryBus) {
         self.pc = self.read16(bus, 0xFFFC);
+        self.delay += 7;
     }
 
 

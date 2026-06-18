@@ -42,6 +42,7 @@ pub struct PPU {
     pub control:    u8,
     pub mask:       u8,
     pub status:     u8,
+    pub nmi_done:   bool,
 
     pub v:          u16,
     pub t:          u16,
@@ -65,7 +66,7 @@ pub struct PPU {
 
     pub odd_frame:  bool,
 
-    pub cart:       Rc<RefCell<Cartridge>>
+    pub cart:       Rc<RefCell<Cartridge>>,
 }
 
 impl PPU {
@@ -75,6 +76,8 @@ impl PPU {
             control:    0,
             mask:       0,
             status:     0,
+
+            nmi_done:   false,
 
             v:          0,
             t:          0,
@@ -333,6 +336,16 @@ impl PPU {
         }
     }
 
+    pub fn signaling_nmi(&self) -> bool {
+        !self.nmi_done                                              && 
+        bit_set(self.control, PPUControlFlags::NMIEnabled as usize) && 
+        bit_set(self.status, PPUStatusFlags::VBlank as usize)
+    }
+
+    pub fn disable_nmi_this_frame(&mut self) {
+        self.nmi_done = true;
+    }
+
     pub fn tick(&mut self) {
         if self.cycle == 0 {
             self.cycle += 1;
@@ -358,8 +371,13 @@ impl PPU {
                 }
             }
 
-            241 if self.cycle == 1 =>
-                self.status = set_bit(self.status, PPUStatusFlags::VBlank as usize, true),
+            241 if self.cycle == 1 => {
+                // NMI for this frame can now be executed
+                self.nmi_done = false;
+
+                self.status = set_bit(self.status, PPUStatusFlags::VBlank as usize, true);
+            }
+                
 
             261 => {
                 self.perform_fetches();
