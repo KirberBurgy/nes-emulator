@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{bit_utils::{bit_set, get_bits, set_bit, set_bits, toggle_bit}, cartridge::Cartridge, memory_bus::MemoryBus};
+use crate::{bit_utils::{bit_set, copy_bit, copy_bit_ranges, copy_bits, get_bits, set_bit, set_bits, toggle_bit}, cartridge::Cartridge, memory_bus::MemoryBus};
 
 
 #[repr(usize)]
@@ -273,5 +273,68 @@ impl PPU {
 
     pub fn overwrite_oam(&mut self, new: [u8; 0x100]) {
         self.oam = new;
+    }
+
+    pub fn tick(&mut self) {
+        match self.scanline {
+            0..=239 => match self.cycle {
+                // Idle cycle
+                0   => {}
+
+                256 => self.increment_y(),
+                257 => {
+                    self.v = copy_bit_ranges(self.v, self.t, &[0..5, 10..11]);
+                }
+
+                _ => match self.cycle % 8 {
+                    1 => {} // fetch_nametable(),
+                    3 => {} // fetch_attribute(),
+                    5 => {} // fetch_pattern_low(),
+                    7 => {} // fetch_pattern_high(),
+                    0 => {} // reload_shifters(),
+                    _ => {}
+                }
+            }
+
+            241 if self.cycle == 1 =>
+                self.status = set_bit(self.status, PPUStatusFlags::VBlank as usize, true),
+
+            261 => match self.cycle {
+                1 => {
+                    self.status = set_bit(self.status, PPUStatusFlags::Sprite0Hit as usize, false);
+                    self.status = set_bit(self.status, PPUStatusFlags::VBlank as usize, false);
+                }
+
+
+                280..=304 if self.rendering() => {
+                    self.v = copy_bit_ranges(self.v, self.t, &[5..10, 11..15]);
+                }
+
+                339 if self.odd_frame && self.rendering() => {
+                    self.cycle = 0;
+                    self.scanline = 0;
+
+                    self.odd_frame = !self.odd_frame;
+
+                    return;
+                }
+
+                _ => {}
+            }
+
+            _ => {}
+        }
+
+        self.cycle += 1;
+        
+        if self.cycle >= 341 {
+            self.cycle = 0;
+            self.scanline += 1;
+        }
+
+        if self.scanline >= 262 {
+            self.scanline = 0;
+            self.odd_frame = !self.odd_frame;
+        }
     }
 }
