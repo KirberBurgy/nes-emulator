@@ -41,7 +41,7 @@ pub fn toggle_bit<T: PrimInt>(val: T, bit: usize) -> T {
 }
 
 pub fn get_bits<T: PrimInt>(val: T, range: Range<usize>) -> T {
-    val & bits_mask(range)
+    val & bits_mask(range.clone())
 }
 
 pub fn extract_bits_ranges<T: PrimInt>(val: T, ranges: &[Range<usize>]) -> T {

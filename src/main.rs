@@ -1,4 +1,4 @@
-use crate::{cartridge::Cartridge, cpu::CPU, memory_bus::MemoryBus, nes::NES};
+use crate::{cartridge::Cartridge, nes::NES};
 
 pub mod bit_utils;
 
@@ -17,6 +17,7 @@ pub mod cartridge;
 pub mod nes;
 
 fn main() {
+    unsafe { std::env::set_var("RUST_BACKTRACE", "1"); }
     let donkey_kong = Cartridge::load("tests/roms/Donkey Kong.nes").unwrap();
-    let mut nes = NES::new(donkey_kong);
+    let nes = NES::new(donkey_kong);
 }

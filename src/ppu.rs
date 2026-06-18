@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{bit_utils::{bit_set, copy_bit, copy_bit_ranges, copy_bits, get_bits, set_bit, set_bits, toggle_bit}, cartridge::Cartridge, memory_bus::MemoryBus};
+use crate::{bit_utils::{bit_set, copy_bit_ranges, get_bits, set_bit, set_bits, toggle_bit}, cartridge::Cartridge};
 
 
 #[repr(usize)]
@@ -198,7 +198,7 @@ impl PPU {
 
     pub fn ppuaddr_write(&mut self, to: u8) {
         if self.w {
-            self.t = set_bits(self.t, 0..8, get_bits(to, 0..8) as u16);
+            self.t = set_bits(self.t, 0..8, to as u16);
             self.v = self.t;
 
             self.w = false;
@@ -311,7 +311,7 @@ impl PPU {
                 let bg_pattern_lo_addr = 
                     base_address +
                     (self.nt_byte as u16) * 16 +
-                    get_bits(self.v, 12..15);
+                    (get_bits(self.v, 12..15) >> 12);
 
                 self.pt_low = self.cart.borrow_mut().chr_read(bg_pattern_lo_addr);
             }
@@ -323,9 +323,9 @@ impl PPU {
                 let bg_pattern_lo_addr = 
                     base_address +
                     (self.nt_byte as u16) * 16 +
-                    get_bits(self.v, 12..15);
+                    (get_bits(self.v, 12..15) >> 12);
 
-                self.pt_low = self.cart.borrow_mut().chr_read(bg_pattern_lo_addr + 8);
+                self.pt_high = self.cart.borrow_mut().chr_read(bg_pattern_lo_addr + 8);
             }
             0 => {
                 self.increment_x();
@@ -339,7 +339,7 @@ impl PPU {
     pub fn signaling_nmi(&self) -> bool {
         !self.nmi_done                                              && 
         bit_set(self.control, PPUControlFlags::NMIEnabled as usize) && 
-        bit_set(self.status, PPUStatusFlags::VBlank as usize)
+        bit_set(self.status,  PPUStatusFlags::VBlank as usize)
     }
 
     pub fn disable_nmi_this_frame(&mut self) {
@@ -380,7 +380,12 @@ impl PPU {
                 
 
             261 => {
-                self.perform_fetches();
+                if  (1..=256).contains(&self.cycle)     || 
+                    (321..=336).contains(&self.cycle)   || 
+                    (337..=340).contains(&self.cycle) 
+                {
+                    self.perform_fetches();
+                }
 
                 if self.cycle == 1 {
                     self.status = set_bit(self.status, PPUStatusFlags::Sprite0Hit as usize, false);

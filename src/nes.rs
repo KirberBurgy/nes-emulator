@@ -10,6 +10,10 @@ impl NES {
         NES { cpu: CPU::new(), bus: MemoryBus::new(cart) }
     }
 
+    pub fn reset(&mut self) {
+        self.cpu.jump_to_startup(&mut self.bus);
+    }
+
     pub fn tick(&mut self) {
         if self.cpu.delay == 0 && self.bus.ppu.signaling_nmi() {
             self.cpu.delay = 7;
@@ -19,6 +23,7 @@ impl NES {
             // Hack: ensures that an NMI handler can't be jumped to
             // more than once per frame.
             self.bus.ppu.disable_nmi_this_frame();
+
         }
 
         self.cpu.tick(&mut self.bus);
