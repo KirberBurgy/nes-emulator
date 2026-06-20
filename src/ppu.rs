@@ -39,85 +39,89 @@ pub enum PPUStatusFlags {
 }
 
 pub struct PPU {    
-    pub control:    u8,
-    pub mask:       u8,
-    pub status:     u8,
-    pub nmi_done:   bool,
+    pub control:        u8,
+    pub mask:           u8,
+    pub status:         u8,
+    pub nmi_done:       bool,
 
-    pub v:          u16,
-    pub t:          u16,
-    pub x:          u8,
-    pub w:          bool,
+    pub v:              u16,
+    pub t:              u16,
+    pub x:              u8,
+    pub w:              bool,
 
-    pub buffer:     u8,
+    pub buffer:         u8,
 
-    pub nt_byte:    u8,
-    pub at_byte:    u8,
-    pub pt_low:     u8,
-    pub pt_high:    u8,
+    pub nt_byte:        u8,
+    pub at_byte:        u8,
+    pub pt_low:         u8,
+    pub pt_high:        u8,
 
-    pub p_shift_lo: u16,
-    pub p_shift_hi: u16,
+    pub p_shift_lo:     u16,
+    pub p_shift_hi:     u16,
     
-    pub a_latch_lo: bool,
-    pub a_latch_hi: bool,
+    pub a_latch_lo:     bool,
+    pub a_latch_hi:     bool,
 
-    pub a_shift_lo: u16,
-    pub a_shift_hi: u16,
+    pub a_shift_lo:     u16,
+    pub a_shift_hi:     u16,
 
-    pub oam_addr:   u8,
-    pub oam:        [u8; 0x100],
+    pub oam_addr:       u8,
+    pub oam:            [u8; 0x100],
 
-    pub palette:    [u8; 0x020],
+    pub palette_ram:    [u8; 0x020],
 
-    pub cycle:      usize,
-    pub scanline:   usize,
+    pub palette_index:  u16,
 
-    pub odd_frame:  bool,
+    pub cycle:          usize,
+    pub scanline:       usize,
 
-    pub cart:       Rc<RefCell<Cartridge>>,
+    pub odd_frame:      bool,
+
+    pub cart:           Rc<RefCell<Cartridge>>,
 }
 
 impl PPU {
     pub fn new(cart: Rc<RefCell<Cartridge>>) -> PPU {
         PPU
         {
-            control:    0,
-            mask:       0,
-            status:     0,
+            control:        0,
+            mask:           0,
+            status:         0,
 
-            nmi_done:   false,
+            nmi_done:       false,
 
-            v:          0,
-            t:          0,
-            x:          0,
-            w:          false,
+            v:              0,
+            t:              0,
+            x:              0,
+            w:              false,
 
-            nt_byte:    0,
-            at_byte:    0,
-            pt_low:     0,
-            pt_high:    0,
+            nt_byte:        0,
+            at_byte:        0,
+            pt_low:         0,
+            pt_high:        0,
             
-            p_shift_lo: 0,
-            p_shift_hi: 0,
+            p_shift_lo:     0,
+            p_shift_hi:     0,
             
-            a_latch_lo: false,
-            a_latch_hi: false,
+            a_latch_lo:     false,
+            a_latch_hi:     false,
 
-            a_shift_lo: 0,
-            a_shift_hi: 0,
+            a_shift_lo:     0,
+            a_shift_hi:     0,
 
-            buffer:     0,
+            buffer:         0,
 
-            oam_addr:   0,
-            oam:        [0; 0x100],
+            oam_addr:       0,
+            oam:            [0; 0x100],
 
-            palette:    [0; 0x020],
+            palette_ram:    [0; 0x020],
 
-            cycle:      0,
-            scanline:   0,
+            palette_index:  0,
 
-            odd_frame:  true,
+            cycle:          0,
+            scanline:       0,
+
+            odd_frame:      true,
 
             cart
         }
@@ -175,23 +179,22 @@ impl PPU {
         self.v = set_bits(self.v, 5..10, coarse_y);
     }
 
-    //                               LO    HI
+    //                           LO    HI
     fn attribute_bits(&self) -> (bool, bool) {
         let coarse_x = get_bits(self.v, 0..5);
         let coarse_y = get_bits(self.v, 5..10);
 
-        let quadrant_x = bit_set(coarse_x, 1);
-        let quadrant_y = bit_set(coarse_y, 1);
+        let quadrant_x = bit_set(coarse_x, 1) as u8;
+        let quadrant_y = bit_set(coarse_y, 1) as u8;
 
-        match (quadrant_x, quadrant_y) {
-            (false, false) => (bit_set(self.at_byte, 0), bit_set(self.at_byte, 1)),
+        // If x, shift += 2 (x controls bit 1).
+        // if y, shift += 4 (y controls bit 2).
+        // In other words, shift = (quadrant_y << 2) | (quadrant_x << 1)
 
-            (true,  false) => (bit_set(self.at_byte, 2), bit_set(self.at_byte, 3)),
+        let shift = (quadrant_y << 2) | (quadrant_x << 1);
+        let shifted = self.at_byte >> shift;
 
-            (false,  true) => (bit_set(self.at_byte, 4), bit_set(self.at_byte, 5)),
-
-            (true,   true) => (bit_set(self.at_byte, 6), bit_set(self.at_byte, 7)),
-        }
+        (bit_set(shifted, 0), bit_set(shifted, 1))
     }
 
     fn shift_shifters(&mut self) {
@@ -292,7 +295,7 @@ impl PPU {
             }
 
             0x3F00..0x4000 => {
-                let ret = self.palette[Self::palette_address(self.v)];
+                let ret = self.palette_ram[Self::palette_address(self.v)];
 
                 self.buffer = self.ppu_read(self.v - 0x1000);
 
@@ -311,7 +314,7 @@ impl PPU {
         match self.v {
             0x0000..0x2000 => self.cart.borrow_mut().chr_write(self.v, to),
             0x2000..0x3F00 => self.cart.borrow_mut().vram_write(self.v, to),
-            0x3F00..0x4000 => self.palette[Self::palette_address(self.v)] = to,
+            0x3F00..0x4000 => self.palette_ram[Self::palette_address(self.v)] = to,
 
             _ => unreachable!()
         };
@@ -337,11 +340,15 @@ impl PPU {
         self.oam = new;
     }
 
+    fn fetch_nametable_byte(&mut self) -> u8 {
+        let nametable_address = 0x2000 | get_bits(self.v, 0..12);
+        self.cart.borrow_mut().vram_read(nametable_address)
+    }
+
     fn perform_fetches(&mut self) {
         match self.cycle % 8 {
             1 => {
-                let nametable_address = 0x2000 | get_bits(self.v, 0..12);
-                self.nt_byte = self.cart.borrow_mut().vram_read(nametable_address);
+                self.nt_byte = self.fetch_nametable_byte();
             }
             3 => {
                 let attribute_address = 
@@ -406,11 +413,30 @@ impl PPU {
 
         match self.scanline {
             0..=239 => {
+                if (1..=256).contains(&self.cycle) && self.rendering() {
+                    let bit_pos = 15 - self.x as usize;
+                    
+                    let pal_lo = bit_set(self.p_shift_lo, bit_pos) as u16;
+                    let pal_hi = bit_set(self.p_shift_hi, bit_pos) as u16;
+                    let attr_lo = bit_set(self.a_shift_lo, bit_pos) as u16;
+                    let attr_hi = bit_set(self.a_shift_hi, bit_pos) as u16;
+
+                    let pattern_bits = (pal_hi << 1) | pal_lo;
+                    let attribute_bits = (attr_hi << 1) | attr_lo;
+
+                    self.palette_index = 
+                        if pattern_bits == 0 { 0 } 
+                        else { (attribute_bits << 2) | pattern_bits };
+                }
+
                 if  (1..=257).contains(&self.cycle)     || 
-                    (321..=336).contains(&self.cycle)   || 
-                    (337..=340).contains(&self.cycle)
+                    (321..=336).contains(&self.cycle)
                 {
                     self.perform_fetches();
+                }
+
+                if self.cycle == 338 || self.cycle == 340 {
+                    self.nt_byte = self.fetch_nametable_byte();
                 }
 
                 if self.cycle == 256 {
@@ -432,10 +458,13 @@ impl PPU {
 
             261 => {
                 if  (1..=257).contains(&self.cycle)     || 
-                    (321..=336).contains(&self.cycle)   || 
-                    (337..=340).contains(&self.cycle) 
+                    (321..=336).contains(&self.cycle)
                 {
                     self.perform_fetches();
+                }
+
+                if self.cycle == 338 || self.cycle == 340 {
+                    self.nt_byte = self.fetch_nametable_byte();
                 }
 
                 if self.cycle == 1 {
