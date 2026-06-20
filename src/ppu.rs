@@ -224,7 +224,7 @@ impl PPU {
 
     pub fn ppuctrl_write(&mut self, to: u8) {
         self.control = to;
-        self.t = set_bits(self.t, 10..12, get_bits(to, 0..2) as u16);
+        self.t = set_bits(self.t, 10..12, get_bits(to, 0..3) as u16);
     }
 
     pub fn ppumask_write(&mut self, to: u8) {
@@ -235,13 +235,13 @@ impl PPU {
 
     pub fn ppuscroll_write(&mut self, to: u8) {
         if self.w {
-            self.t = set_bits(self.t, 12..15, get_bits(to, 0..2) as u16);
+            self.t = set_bits(self.t, 12..15, get_bits(to, 0..3) as u16);
             self.t = set_bits(self.t, 5..10,  get_bits(to, 3..8) as u16);
 
             self.w = false;
         }
         else {
-            self.x = get_bits(to, 0..2);
+            self.x = get_bits(to, 0..3);
             self.t = set_bits(self.t, 0..5, get_bits(to, 3..8) as u16);
 
             self.w = true;
