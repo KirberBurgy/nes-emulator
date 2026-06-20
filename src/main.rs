@@ -19,5 +19,12 @@ pub mod nes;
 fn main() {
     unsafe { std::env::set_var("RUST_BACKTRACE", "1"); }
     let donkey_kong = Cartridge::load("tests/roms/Donkey Kong.nes").unwrap();
-    let nes = NES::new(donkey_kong);
+    let mut nes = NES::new(donkey_kong);
+
+    nes.reset();
+
+    while nes.cpu.cycles < 10000 {
+        nes.tick();
+    }
+
 }

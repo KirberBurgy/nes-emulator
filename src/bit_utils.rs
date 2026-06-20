@@ -41,7 +41,7 @@ pub fn toggle_bit<T: PrimInt>(val: T, bit: usize) -> T {
 }
 
 pub fn get_bits<T: PrimInt>(val: T, range: Range<usize>) -> T {
-    val & bits_mask(range.clone())
+    (val & bits_mask(range.clone())) >> range.start
 }
 
 pub fn extract_bits_ranges<T: PrimInt>(val: T, ranges: &[Range<usize>]) -> T {
@@ -52,6 +52,10 @@ pub fn set_bits<T: PrimInt>(val: T, range: Range<usize>, to: T) -> T {
     let width = range.end - range.start;
 
     (val & !bits_mask::<T>(range.clone())) | (get_bits(to, 0..width) << range.start)
+}
+
+pub fn set_bits_all_to<T: PrimInt>(val: T, range: Range<usize>, on: bool) -> T {
+    if on { val | bits_mask::<T>(range) } else { val | !bits_mask::<T>(range) }
 }
 
 pub fn copy_bit<T: PrimInt>(to: T, from: T, bit: usize) -> T {

@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{bit_utils::{bit_set, copy_bit_ranges, get_bits, set_bit, set_bits, toggle_bit}, cartridge::Cartridge};
+use crate::{bit_utils::{bit_set, copy_bit_ranges, get_bits, set_bit, set_bits, set_bits_all_to, toggle_bit}, cartridge::Cartridge};
 
 
 #[repr(usize)]
@@ -56,6 +56,15 @@ pub struct PPU {
     pub pt_low:     u8,
     pub pt_high:    u8,
 
+    pub p_shift_lo: u16,
+    pub p_shift_hi: u16,
+    
+    pub a_latch_lo: bool,
+    pub a_latch_hi: bool,
+
+    pub a_shift_lo: u16,
+    pub a_shift_hi: u16,
+
     pub oam_addr:   u8,
     pub oam:        [u8; 0x100],
 
@@ -88,6 +97,15 @@ impl PPU {
             at_byte:    0,
             pt_low:     0,
             pt_high:    0,
+            
+            p_shift_lo: 0,
+            p_shift_hi: 0,
+            
+            a_latch_lo: false,
+            a_latch_hi: false,
+
+            a_shift_lo: 0,
+            a_shift_hi: 0,
 
             buffer:     0,
 
@@ -104,8 +122,6 @@ impl PPU {
             cart
         }
     }
-
-
 
     fn increment(&self) -> u16 {
         if bit_set(self.control, PPUControlFlags::VRAMIncrement as usize) {
@@ -159,7 +175,40 @@ impl PPU {
         self.v = set_bits(self.v, 5..10, coarse_y);
     }
 
+    //                               LO    HI
+    fn attribute_bits(&self) -> (bool, bool) {
+        let coarse_x = get_bits(self.v, 0..5);
+        let coarse_y = get_bits(self.v, 5..10);
 
+        let quadrant_x = bit_set(coarse_x, 1);
+        let quadrant_y = bit_set(coarse_y, 1);
+
+        match (quadrant_x, quadrant_y) {
+            (false, false) => (bit_set(self.at_byte, 0), bit_set(self.at_byte, 1)),
+
+            (true,  false) => (bit_set(self.at_byte, 2), bit_set(self.at_byte, 3)),
+
+            (false,  true) => (bit_set(self.at_byte, 4), bit_set(self.at_byte, 5)),
+
+            (true,   true) => (bit_set(self.at_byte, 6), bit_set(self.at_byte, 7)),
+        }
+    }
+
+    fn shift_shifters(&mut self) {
+        self.p_shift_lo = self.p_shift_lo.wrapping_shl(1);
+        self.p_shift_hi = self.p_shift_hi.wrapping_shl(1);
+
+        self.a_shift_lo = self.a_shift_lo.wrapping_shl(1);
+        self.a_shift_hi = self.a_shift_hi.wrapping_shl(1);
+    }
+
+    fn reload_shifters(&mut self) {
+        self.p_shift_lo = set_bits(self.p_shift_lo, 0..8, self.pt_low  as u16);
+        self.p_shift_hi = set_bits(self.p_shift_hi, 0..8, self.pt_high as u16);
+
+        self.a_shift_lo = set_bits_all_to(self.a_shift_lo, 0..8, self.a_latch_lo);
+        self.a_shift_hi = set_bits_all_to(self.a_shift_hi, 0..8, self.a_latch_hi);
+    }
 
     pub fn ppustatus_read(&mut self) -> u8 {
         self.w = false;
@@ -302,6 +351,7 @@ impl PPU {
                     ((self.v >> 2) & 0x07);
 
                 self.at_byte = self.cart.borrow_mut().vram_read(attribute_address);
+                (self.a_latch_lo, self.a_latch_hi) = self.attribute_bits();
             }
             5 => {
                 let base_address =
@@ -311,7 +361,7 @@ impl PPU {
                 let bg_pattern_lo_addr = 
                     base_address +
                     (self.nt_byte as u16) * 16 +
-                    (get_bits(self.v, 12..15) >> 12);
+                    get_bits(self.v, 12..15);
 
                 self.pt_low = self.cart.borrow_mut().chr_read(bg_pattern_lo_addr);
             }
@@ -323,17 +373,18 @@ impl PPU {
                 let bg_pattern_lo_addr = 
                     base_address +
                     (self.nt_byte as u16) * 16 +
-                    (get_bits(self.v, 12..15) >> 12);
+                    get_bits(self.v, 12..15);
 
                 self.pt_high = self.cart.borrow_mut().chr_read(bg_pattern_lo_addr + 8);
             }
             0 => {
+                self.reload_shifters();
                 self.increment_x();
-
-                // reload_shifters();
             }
             _ => {}
         }
+
+        self.shift_shifters();
     }
 
     pub fn signaling_nmi(&self) -> bool {
@@ -355,7 +406,7 @@ impl PPU {
 
         match self.scanline {
             0..=239 => {
-                if  (1..=256).contains(&self.cycle)     || 
+                if  (1..=257).contains(&self.cycle)     || 
                     (321..=336).contains(&self.cycle)   || 
                     (337..=340).contains(&self.cycle)
                 {
@@ -380,7 +431,7 @@ impl PPU {
                 
 
             261 => {
-                if  (1..=256).contains(&self.cycle)     || 
+                if  (1..=257).contains(&self.cycle)     || 
                     (321..=336).contains(&self.cycle)   || 
                     (337..=340).contains(&self.cycle) 
                 {
