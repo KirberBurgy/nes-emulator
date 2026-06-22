@@ -11,6 +11,8 @@ pub mod instructions;
 
 pub mod ppu;
 
+pub mod controller;
+
 pub mod mapper;
 pub mod mappers;
 
@@ -103,7 +105,7 @@ fn main() {
         println!("Time taken for one frame: {:?}", now.elapsed());
     }
 
-    while nes.bus.ppu.frame < 500 {
+    while nes.bus.ppu.frame < 300 {
         nes.tick();
     }
 

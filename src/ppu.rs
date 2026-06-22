@@ -319,7 +319,7 @@ impl PPU {
     }
 
 
-    pub fn pal_read(&mut self, addr: u16) -> u8 {
+    pub fn pal_read(&self, addr: u16) -> u8 {
         get_bits(self.palette_ram[Self::palette_address(addr)], 0..6)
     }
 
