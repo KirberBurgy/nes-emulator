@@ -1,4 +1,4 @@
-use crate::{cartridge::Cartridge, cpu::CPU, memory_bus::MemoryBus};
+use crate::{cartridge::Cartridge, controller::Controller, cpu::CPU, memory_bus::MemoryBus};
 
 pub const NES_PALETTE: [(u8, u8, u8); 64] = [
     (98u8, 98u8, 98u8), (  0,  28, 149), ( 25,   4, 172), ( 66,   0, 157), ( 97,   0, 107), (101,   5,   0), (110,   0,  37), ( 73,  30,   0),
@@ -14,16 +14,22 @@ pub const NES_PALETTE: [(u8, u8, u8); 64] = [
     ( 230,  223,  156), (211, 233, 154), (194, 239, 168), (183, 239, 196), (182, 234, 229), (184, 184, 184), (  0,   0,   0), (  0,   0,   0),
 ];
 
-pub struct NES {
+pub struct NES<'a> {
     pub cpu:            CPU,
-    pub bus:            MemoryBus,
+    pub bus:            MemoryBus<'a>,
 
     pub framebuffer:    Box<[(u8, u8, u8); 256 * 240]>
 }
 
-impl NES {
-    pub fn new(cart: Cartridge) -> NES {
-        NES { cpu: CPU::new(), bus: MemoryBus::new(cart), framebuffer: Box::new([(0, 0, 0); 256 * 240]) }
+impl<'a> NES<'a> {
+    pub fn new(cart: Cartridge, player_1: Option<Controller<'a>>, player_2: Option<Controller<'a>>) -> Self {
+        Self { 
+            cpu: CPU::new(), 
+
+            bus: MemoryBus::new(cart, player_1, player_2), 
+            
+            framebuffer: Box::new([(0, 0, 0); 256 * 240]) 
+        }
     }
 
     pub fn reset(&mut self) {

@@ -1,19 +1,24 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{cartridge::Cartridge, ppu::PPU};
+use crate::{cartridge::Cartridge, controller::Controller, ppu::PPU};
 
-pub struct MemoryBus {
+pub struct MemoryBus<'a> {
     pub ram:        Box<[u8; 0x0800]>,
     pub cartridge:  Rc<RefCell<Cartridge>>,
+    
     pub ppu:        PPU,
+    
+    pub player_1:   Option<Controller<'a>>,
+    pub player_2:   Option<Controller<'a>>,
+    
     pub dma_signal: bool
 }
 
-impl MemoryBus {
-    pub fn new(cartridge: Cartridge) -> MemoryBus {
+impl<'a> MemoryBus<'a> {
+    pub fn new(cartridge: Cartridge, player_1: Option<Controller<'a>>, player_2: Option<Controller<'a>>) -> Self {
         let cell = Rc::new(RefCell::new(cartridge));
 
-        MemoryBus { ram: Box::new([0; 0x0800]), ppu: PPU::new(cell.clone()), cartridge: cell, dma_signal: false }
+        Self { ram: Box::new([0; 0x0800]), ppu: PPU::new(cell.clone()), player_1, player_2, cartridge: cell, dma_signal: false }
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -26,7 +31,17 @@ impl MemoryBus {
                 0x0007 => self.ppu.ppudata_read(),
 
                 _ => unreachable!()
-            }
+            },
+
+            0x4016          => match &mut self.player_1 {
+                Some(controller)    => controller.read(),
+                None                => 0
+            },
+
+            0x4017          => match &mut self.player_2 {
+                Some(controller)    => controller.read(),
+                None                => 0
+            },
 
             0x8000..        => self.cartridge.borrow_mut().prg_read(addr),
 
@@ -60,6 +75,16 @@ impl MemoryBus {
 
                 self.ppu.overwrite_oam(new_oam);
                 self.dma_signal = true;
+            },
+
+            0x4016          => {
+                if let Some(controller) = &mut self.player_1 {
+                    controller.write(value);
+                }
+
+                if let Some(controller) = &mut self.player_2 {
+                    controller.write(value);
+                }
             }
 
             0x8000..        => self.cartridge.borrow_mut().prg_write(addr, value),

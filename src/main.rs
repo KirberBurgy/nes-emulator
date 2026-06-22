@@ -93,7 +93,7 @@ fn record(nes: &mut NES, frames: usize, name: &str) {
 fn main() {
     unsafe { std::env::set_var("RUST_BACKTRACE", "full"); }
     let donkey_kong = Cartridge::load("tests/roms/Donkey Kong.nes").unwrap();
-    let mut nes = NES::new(donkey_kong);
+    let mut nes = NES::new(donkey_kong, None, None);
 
     nes.reset();
 
