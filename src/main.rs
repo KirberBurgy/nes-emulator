@@ -61,6 +61,33 @@ pub fn dump_chr_to_ppm(cart: &mut Cartridge, filename: &str) -> io::Result<()> {
     Ok(())
 }
 
+fn capture(nes: &mut NES, name: &str) {
+    let mut file = File::create(&format!("screenshot/{}.ppm", name)).unwrap();
+    writeln!(file, "P3").unwrap();
+    writeln!(file, "256 240").unwrap();
+    writeln!(file, "255").unwrap();
+
+    for y in 0..240 {
+        for x in 0..256 {
+            let (r, g, b) = nes.framebuffer[x + y * 256];
+
+            writeln!(file, "{} {} {}", r, g, b).unwrap();    
+        }
+    }
+}
+
+fn record(nes: &mut NES, frames: usize, name: &str) {
+    for i in 0..frames {
+        let old = nes.bus.ppu.frame;
+
+        while nes.bus.ppu.frame < old + 60 {
+            nes.tick();
+        }
+
+        capture(nes, &format!("{}{}", name, i));
+    }
+}
+
 fn main() {
     unsafe { std::env::set_var("RUST_BACKTRACE", "full"); }
     let donkey_kong = Cartridge::load("tests/roms/Donkey Kong.nes").unwrap();
@@ -68,14 +95,23 @@ fn main() {
 
     nes.reset();
 
+    {
+        let now = std::time::Instant::now();
+        while nes.bus.ppu.frame != 1 {
+            nes.tick();
+        }
+        println!("Time taken for one frame: {:?}", now.elapsed());
+    }
+
     while nes.bus.ppu.frame < 500 {
         nes.tick();
     }
 
-
-
-    let mut cart = nes.bus.cartridge.borrow_mut();
-    dump_chr_to_ppm(&mut cart, "screenshot/chr.ppm").unwrap();
+    {
+        let mut cart = nes.bus.cartridge.borrow_mut();
+        dump_chr_to_ppm(&mut cart, "screenshot/chr.ppm").unwrap();
+    }
+    
 
     // PAL
     {
@@ -103,19 +139,5 @@ fn main() {
         }
     }
 
-    // SCREEN
-    {
-        let mut file = File::create("screenshot/screen.ppm").unwrap();
-        writeln!(file, "P3").unwrap();
-        writeln!(file, "256 240").unwrap();
-        writeln!(file, "255").unwrap();
-
-        for y in 0..240 {
-            for x in 0..256 {
-                let (r, g, b) = nes.framebuffer[x + y * 256];
-
-                writeln!(file, "{} {} {}", r, g, b).unwrap();    
-            }
-        }
-    }
+    record(&mut nes, 10, "game");
 }

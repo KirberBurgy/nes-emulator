@@ -38,6 +38,15 @@ pub enum PPUStatusFlags {
     VBlank          = 7
 }
 
+
+#[repr(usize)]
+#[derive(Copy, Clone, Debug)]
+pub enum SpriteAttributes {
+    BehindBg            = 5,
+    FlipHorizontally    = 6,
+    FlipVertically      = 7
+}
+
 pub struct PPU {    
     pub control:        u8,
     pub mask:           u8,
@@ -67,14 +76,25 @@ pub struct PPU {
 
     pub oam_addr:       u8,
     pub oam:            [u8; 0x100],
+    pub secondary_oam:  [u8; 0x020],
+
+    pub sprite_count:   usize,
+    pub can_hit_sp0:    bool,
+
+    pub sprite_pt_lo:   [u8; 0x008],
+    pub sprite_pt_hi:   [u8; 0x008],
+    pub sprite_attr:    [u8; 0x008],
+    pub sprite_xs:      [u8; 0x008],
 
     pub palette_ram:    [u8; 0x020],
 
+    // This is a silly name, but it means the palette index
+    // of the latest pixel which was shifted out.
     pub palette_index:  u16,
 
     pub cycle:          usize,
     pub scanline:       usize,
-    pub frame:         usize,
+    pub frame:          usize,
 
     pub cart:           Rc<RefCell<Cartridge>>,
 }
@@ -112,6 +132,15 @@ impl PPU {
 
             oam_addr:       0,
             oam:            [0; 0x100],
+            secondary_oam:  [0; 0x020],
+
+            sprite_count:   0,
+            can_hit_sp0:    false,
+
+            sprite_pt_lo:   [0; 0x008],
+            sprite_pt_hi:   [0; 0x008],
+            sprite_attr:    [0; 0x008],
+            sprite_xs:      [0; 0x008],
 
             palette_ram:    [0; 0x020],
 
@@ -122,7 +151,7 @@ impl PPU {
 
             frame:          0,
 
-            cart
+            cart,
         }
     }
 
@@ -289,6 +318,7 @@ impl PPU {
         }
     }
 
+
     pub fn pal_read(&mut self, addr: u16) -> u8 {
         get_bits(self.palette_ram[Self::palette_address(addr)], 0..6)
     }
@@ -325,12 +355,13 @@ impl PPU {
         match mirrored_v {
             0x0000..0x2000 => self.cart.borrow_mut().chr_write(mirrored_v, to),
             0x2000..0x3F00 => self.cart.borrow_mut().vram_write(mirrored_v, to),
-            0x3F00..0x4000 => { self.palette_ram[Self::palette_address(mirrored_v)] = get_bits(to, 0..6) },
+            0x3F00..0x4000 => self.palette_ram[Self::palette_address(mirrored_v)] = get_bits(to, 0..6),
             _ => unreachable!()
         };
 
         self.v = self.v.wrapping_add(self.increment());
     }
+
 
     pub fn oamaddr_write(&mut self, to: u8) {
         self.oam_addr = to;
@@ -350,10 +381,12 @@ impl PPU {
         self.oam = new;
     }
 
+
     fn fetch_nametable_byte(&mut self) -> u8 {
         let nametable_address = 0x2000 | get_bits(self.v, 0..12);
         self.cart.borrow_mut().vram_read(nametable_address)
     }
+
 
     pub fn signaling_nmi(&self) -> bool {
         !self.nmi_done                                              && 
@@ -364,6 +397,7 @@ impl PPU {
     pub fn disable_nmi_this_frame(&mut self) {
         self.nmi_done = true;
     }
+
 
     fn perform_fetches(&mut self) {
         match self.cycle % 8 {
@@ -411,6 +445,134 @@ impl PPU {
         }
     }
 
+    fn sprite_evaluation(&mut self) {
+        self.sprite_count = 0;
+        self.can_hit_sp0 = false;
+
+        let next_scanline   = self.scanline + 1;
+        let tall_sprites    = bit_set(self.control, PPUControlFlags::SpriteSize as usize);
+        let sprite_height   = if tall_sprites { 16 } else { 8 };
+
+        for i in 0..64 {
+            let y = self.oam[i * 4] as usize;
+            let sprite_top = y + 1;
+
+            if next_scanline >= sprite_top && next_scanline < sprite_top + sprite_height {
+                if self.sprite_count < 8 {
+                    // Copy this sprite to secondary OAM.
+                    for j in 0..4 {
+                        self.secondary_oam[self.sprite_count * 4 + j] = self.oam[i * 4 + j];
+                    }
+
+                    if i == 0 {
+                        self.can_hit_sp0 = true;
+                    }
+
+                    self.sprite_count += 1;
+                }
+                else {
+                    self.status = set_bit(self.status, PPUStatusFlags::SpriteOverflow as usize, true);
+
+                    break;
+                }
+            }
+        }
+
+        for i in 0..self.sprite_count {
+            let y           = self.secondary_oam[i * 4    ] as usize;
+            let tile        = self.secondary_oam[i * 4 + 1];
+            let attribute   = self.secondary_oam[i * 4 + 2];
+            let x           = self.secondary_oam[i * 4 + 3];
+
+            let sprite_top  = y + 1;
+
+            let row = next_scanline - sprite_top;
+
+            let rel_y = 
+                if bit_set(attribute, SpriteAttributes::FlipVertically as usize) { sprite_height - 1 - row }
+                else { row };
+
+            let (bank, tile) = 
+                if tall_sprites { 
+                    let bank = if bit_set(tile, 0) { 0x1000 } else { 0x0000 };
+                    let tile = set_bit(tile as u16, 0, false);
+
+                    (bank, tile)
+                }
+                else { 
+                    let bank = if bit_set(self.control, PPUControlFlags::SpriteTableAddress as usize) { 0x1000 } else { 0x0000 };
+
+                    (bank, tile as u16)
+                };
+
+            let address = if sprite_height == 8 {
+                bank + tile * 16 + rel_y as u16
+            }
+            else {
+                let address =
+                    if rel_y >= 8 { bank + (tile + 1) * 16 + (rel_y - 8) as u16 }
+                    else { bank + tile * 16 + rel_y as u16 };
+
+                address
+            };
+
+            let lo = self.cart.borrow_mut().chr_read(address);
+            let hi = self.cart.borrow_mut().chr_read(address + 8);
+
+            self.sprite_pt_lo[i] = lo;
+            self.sprite_pt_hi[i] = hi;
+
+            self.sprite_attr[i] = attribute;
+            self.sprite_xs[i] = x;
+        }
+    }
+
+    fn render_sprites(&mut self, bg_opaque: bool) {
+        let current_x = self.cycle as usize - 1;
+
+        for i in 0..self.sprite_count {
+            let x = self.sprite_xs[i] as usize;
+            
+            if current_x < x || current_x >= x + 8 { continue; }
+
+            let offset = current_x - x;
+            let attr = self.sprite_attr[i];
+
+            let bit_index = 
+                if bit_set(attr, SpriteAttributes::FlipHorizontally as usize) { offset } 
+                else { 7 - offset };
+
+            let pal_lo = bit_set(self.sprite_pt_lo[i], bit_index) as u16;
+            let pal_hi = bit_set(self.sprite_pt_hi[i], bit_index) as u16;
+
+            let pattern_bits = (pal_hi << 1) | pal_lo;
+
+            // If the pattern bits are zero, this sprite pixel is translucent anyways.
+            if pattern_bits == 0 {
+                continue;
+            }
+
+            if bg_opaque && self.can_hit_sp0 && i == 0 {
+                if current_x < 255 {
+                    self.status = set_bit(self.status, PPUStatusFlags::Sprite0Hit as usize, true);
+                }
+            }
+
+            let attr_lo = bit_set(attr, 0) as u16;
+            let attr_hi = bit_set(attr, 1) as u16;
+            let attribute_bits = (attr_hi << 1) | attr_lo;
+
+            let palette_index = 0x3F10 | (attribute_bits << 2) | pattern_bits;
+
+            let behind_bg = bit_set(attr, SpriteAttributes::BehindBg as usize);
+            if !bg_opaque || !behind_bg {
+                self.palette_index = palette_index;
+            }
+
+            return;
+        }
+    }
+
     pub fn tick(&mut self) {
         if self.cycle == 0 {
             self.cycle += 1;
@@ -437,12 +599,22 @@ impl PPU {
 
                 if self.cycle == 257 && rendering {
                     self.v = copy_bit_ranges(self.v, self.t, &[0..5, 10..11]);
+
+                    if self.scanline == 261 {
+                        self.sprite_count = 0;
+                        self.can_hit_sp0 = false;
+                    }
+                    else {
+                        self.sprite_evaluation();
+                    }
                 }
 
                 if self.cycle == 338 || self.cycle == 340 {
                     self.nt_byte = self.fetch_nametable_byte();
                 }
                 
+                let mut bg_opaque = false;
+
                 if self.scanline == 261 {
                     if self.cycle == 1 {
                         self.status = set_bit(self.status, PPUStatusFlags::Sprite0Hit as usize, false);
@@ -461,7 +633,7 @@ impl PPU {
                         return;
                     }
                 } 
-                else if rendering {
+                else if bit_set(self.mask, PPUMaskFlags::EnableBg as usize) {
                     let bit_pos = 15 - self.x as usize;
 
                     let pal_lo = bit_set(self.p_shift_lo, bit_pos) as u16;
@@ -477,9 +649,15 @@ impl PPU {
                         0x3F00 |
                         if pattern_bits == 0 { 0 }
                         else { (attribute_bits << 2) | pattern_bits };
+
+                    bg_opaque = self.palette_index != 0x3F00;
                 }
                 else {
                     self.palette_index = 0x3F00;
+                }
+
+                if (1..=256).contains(&self.cycle) && bit_set(self.mask, PPUMaskFlags::EnableSprites as usize) && self.scanline != 261 {
+                    self.render_sprites(bg_opaque);
                 }
             }
 
