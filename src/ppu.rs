@@ -74,8 +74,7 @@ pub struct PPU {
 
     pub cycle:          usize,
     pub scanline:       usize,
-
-    pub odd_frame:      bool,
+    pub frame:         usize,
 
     pub cart:           Rc<RefCell<Cartridge>>,
 }
@@ -119,9 +118,9 @@ impl PPU {
             palette_index:  0,
 
             cycle:          0,
-            scanline:       0,
+            scanline:       261,
 
-            odd_frame:      true,
+            frame:          0,
 
             cart
         }
@@ -170,7 +169,7 @@ impl PPU {
         match coarse_y {
             29 => {
                 coarse_y = 0;
-                self.v ^= 0x0800;
+                self.v = toggle_bit(self.v, 11);
             }
             31 => coarse_y = 0,
             _ => coarse_y += 1,
@@ -213,6 +212,14 @@ impl PPU {
         self.a_shift_hi = set_bits_all_to(self.a_shift_hi, 0..8, self.a_latch_hi);
     }
 
+    fn odd_frame(&self) -> bool {
+        self.frame % 2 != 0
+    }
+
+    pub fn outputting_pixels(&self) -> bool {
+        self.scanline <= 239 && self.cycle <= 256
+    }
+
     pub fn ppustatus_read(&mut self) -> u8 {
         self.w = false;
         
@@ -224,13 +231,12 @@ impl PPU {
 
     pub fn ppuctrl_write(&mut self, to: u8) {
         self.control = to;
-        self.t = set_bits(self.t, 10..12, get_bits(to, 0..3) as u16);
+        self.t = set_bits(self.t, 10..12, get_bits(to, 0..2) as u16);
     }
 
     pub fn ppumask_write(&mut self, to: u8) {
         self.mask = to;
     }
-
 
 
     pub fn ppuscroll_write(&mut self, to: u8) {
@@ -283,6 +289,9 @@ impl PPU {
         }
     }
 
+    pub fn pal_read(&mut self, addr: u16) -> u8 {
+        get_bits(self.palette_ram[Self::palette_address(addr)], 0..6)
+    }
 
     pub fn ppudata_read(&mut self) -> u8 {
         let byte = match self.v {
@@ -295,7 +304,7 @@ impl PPU {
             }
 
             0x3F00..0x4000 => {
-                let ret = self.palette_ram[Self::palette_address(self.v)];
+                let ret = self.pal_read(self.v);
 
                 self.buffer = self.ppu_read(self.v - 0x1000);
 
@@ -311,11 +320,12 @@ impl PPU {
     }
 
     pub fn ppudata_write(&mut self, to: u8) {
-        match self.v {
-            0x0000..0x2000 => self.cart.borrow_mut().chr_write(self.v, to),
-            0x2000..0x3F00 => self.cart.borrow_mut().vram_write(self.v, to),
-            0x3F00..0x4000 => self.palette_ram[Self::palette_address(self.v)] = to,
-
+        let mirrored_v = self.v & 0x3FFF;
+        
+        match mirrored_v {
+            0x0000..0x2000 => self.cart.borrow_mut().chr_write(mirrored_v, to),
+            0x2000..0x3F00 => self.cart.borrow_mut().vram_write(mirrored_v, to),
+            0x3F00..0x4000 => { self.palette_ram[Self::palette_address(mirrored_v)] = get_bits(to, 0..6) },
             _ => unreachable!()
         };
 
@@ -343,6 +353,16 @@ impl PPU {
     fn fetch_nametable_byte(&mut self) -> u8 {
         let nametable_address = 0x2000 | get_bits(self.v, 0..12);
         self.cart.borrow_mut().vram_read(nametable_address)
+    }
+
+    pub fn signaling_nmi(&self) -> bool {
+        !self.nmi_done                                              && 
+        bit_set(self.control, PPUControlFlags::NMIEnabled as usize) && 
+        bit_set(self.status,  PPUStatusFlags::VBlank as usize)
+    }
+
+    pub fn disable_nmi_this_frame(&mut self) {
+        self.nmi_done = true;
     }
 
     fn perform_fetches(&mut self) {
@@ -386,22 +406,9 @@ impl PPU {
             }
             0 => {
                 self.reload_shifters();
-                self.increment_x();
             }
             _ => {}
         }
-
-        self.shift_shifters();
-    }
-
-    pub fn signaling_nmi(&self) -> bool {
-        !self.nmi_done                                              && 
-        bit_set(self.control, PPUControlFlags::NMIEnabled as usize) && 
-        bit_set(self.status,  PPUStatusFlags::VBlank as usize)
-    }
-
-    pub fn disable_nmi_this_frame(&mut self) {
-        self.nmi_done = true;
     }
 
     pub fn tick(&mut self) {
@@ -412,81 +419,79 @@ impl PPU {
         }
 
         match self.scanline {
-            0..=239 => {
-                if (1..=256).contains(&self.cycle) && self.rendering() {
-                    let bit_pos = 15 - self.x as usize;
+            0..=239 | 261 => {
+                let rendering = self.rendering();
+                
+                if (1..=256).contains(&self.cycle) || (321..=336).contains(&self.cycle) {
+                    self.perform_fetches();
+                    self.shift_shifters();
                     
+                    if self.cycle % 8 == 0 && rendering {
+                        self.increment_x();
+                    }
+                }
+
+                if self.cycle == 256 && rendering {
+                    self.increment_y();
+                }
+
+                if self.cycle == 257 && rendering {
+                    self.v = copy_bit_ranges(self.v, self.t, &[0..5, 10..11]);
+                }
+
+                if self.cycle == 338 || self.cycle == 340 {
+                    self.nt_byte = self.fetch_nametable_byte();
+                }
+                
+                if self.scanline == 261 {
+                    if self.cycle == 1 {
+                        self.status = set_bit(self.status, PPUStatusFlags::Sprite0Hit as usize, false);
+                        self.status = set_bit(self.status, PPUStatusFlags::SpriteOverflow as usize, false);
+                        self.status = set_bit(self.status, PPUStatusFlags::VBlank as usize, false);
+                    }
+                    
+                    if rendering && self.cycle >= 280 && self.cycle <= 304 {
+                        self.v = copy_bit_ranges(self.v, self.t, &[5..10, 11..15]);
+                    }
+                    
+                    if self.cycle == 339 && self.odd_frame() && rendering {
+                        self.cycle = 0;
+                        self.scanline = 0;
+
+                        return;
+                    }
+                } 
+                else if rendering {
+                    let bit_pos = 15 - self.x as usize;
+
                     let pal_lo = bit_set(self.p_shift_lo, bit_pos) as u16;
                     let pal_hi = bit_set(self.p_shift_hi, bit_pos) as u16;
+
                     let attr_lo = bit_set(self.a_shift_lo, bit_pos) as u16;
                     let attr_hi = bit_set(self.a_shift_hi, bit_pos) as u16;
 
                     let pattern_bits = (pal_hi << 1) | pal_lo;
                     let attribute_bits = (attr_hi << 1) | attr_lo;
 
-                    self.palette_index = 
-                        if pattern_bits == 0 { 0 } 
+                    self.palette_index =
+                        0x3F00 |
+                        if pattern_bits == 0 { 0 }
                         else { (attribute_bits << 2) | pattern_bits };
                 }
-
-                if  (1..=257).contains(&self.cycle)     || 
-                    (321..=336).contains(&self.cycle)
-                {
-                    self.perform_fetches();
-                }
-
-                if self.cycle == 338 || self.cycle == 340 {
-                    self.nt_byte = self.fetch_nametable_byte();
-                }
-
-                if self.cycle == 256 {
-                    self.increment_y();
-                }
-
-                if self.cycle == 257 {
-                    self.v = copy_bit_ranges(self.v, self.t, &[0..5, 10..11]);
+                else {
+                    self.palette_index = 0x3F00;
                 }
             }
 
-            241 if self.cycle == 1 => {
-                // NMI for this frame can now be executed
-                self.nmi_done = false;
-
-                self.status = set_bit(self.status, PPUStatusFlags::VBlank as usize, true);
-            }
-                
-
-            261 => {
-                if  (1..=257).contains(&self.cycle)     || 
-                    (321..=336).contains(&self.cycle)
-                {
-                    self.perform_fetches();
-                }
-
-                if self.cycle == 338 || self.cycle == 340 {
-                    self.nt_byte = self.fetch_nametable_byte();
-                }
-
+            241 => {
                 if self.cycle == 1 {
-                    self.status = set_bit(self.status, PPUStatusFlags::Sprite0Hit as usize, false);
-                    self.status = set_bit(self.status, PPUStatusFlags::SpriteOverflow as usize, false);
-                    self.status = set_bit(self.status, PPUStatusFlags::VBlank as usize, false);
+                    self.nmi_done = false;
+                    self.status = set_bit(self.status, PPUStatusFlags::VBlank as usize, true);
                 }
-
-                if self.rendering() {
-                    if self.cycle >= 280 && self.cycle <= 304 {
-                        self.v = copy_bit_ranges(self.v, self.t, &[5..10, 11..15]);
-                    }
-                    
-                    if self.cycle == 339 && self.odd_frame {
-                        self.cycle = 0;
-                        self.scanline = 0;
-
-                        self.odd_frame = false;
-
-                        return;
-                    }
-                }
+            }
+            
+            260 if self.cycle == 340 => {
+                self.frame += 1;
             }
 
             _ => {}
@@ -501,7 +506,6 @@ impl PPU {
 
         if self.scanline >= 262 {
             self.scanline = 0;
-            self.odd_frame = !self.odd_frame;
         }
     }
 }

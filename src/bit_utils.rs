@@ -55,7 +55,7 @@ pub fn set_bits<T: PrimInt>(val: T, range: Range<usize>, to: T) -> T {
 }
 
 pub fn set_bits_all_to<T: PrimInt>(val: T, range: Range<usize>, on: bool) -> T {
-    if on { val | bits_mask::<T>(range) } else { val | !bits_mask::<T>(range) }
+    if on { val | bits_mask::<T>(range) } else { val & !bits_mask::<T>(range) }
 }
 
 pub fn copy_bit<T: PrimInt>(to: T, from: T, bit: usize) -> T {

@@ -492,7 +492,7 @@ impl CPU {
     }
 
     fn brk(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {
-        self.jump_to_handler(bus, 0xFFFE)
+        self.jump_to_handler(bus, self.pc + 2, 0xFFFE)
     }
 
     fn rti(&mut self, bus: &mut MemoryBus, mode: AddressingMode) -> usize {

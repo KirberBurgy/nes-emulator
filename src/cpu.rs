@@ -120,8 +120,7 @@ impl CPU {
         (hi << 8) | lo
     }
 
-    pub(crate) fn jump_to_handler(&mut self, bus: &mut MemoryBus, lsb_addr: u16) -> usize {
-        let ret_target = self.pc + 2;
+    pub(crate) fn jump_to_handler(&mut self, bus: &mut MemoryBus, ret_target: u16, lsb_addr: u16) -> usize {
         self.push16(bus, ret_target);
 
         self.push8(bus, self.p | nth_bit::<u8>(4) | nth_bit::<u8>(5));
@@ -133,7 +132,7 @@ impl CPU {
     }
 
     pub fn jump_to_nmi_handler(&mut self, bus: &mut MemoryBus) {
-        self.delay += self.jump_to_handler(bus, 0xFFFA);
+        self.delay += self.jump_to_handler(bus, self.pc, 0xFFFA);
     }
 
     pub fn jump_to_startup(&mut self, bus: &mut MemoryBus) {
