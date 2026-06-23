@@ -27,7 +27,9 @@ pub mod renderer;
 
 struct AppState<'a> {
     nes:        NES<'a>,
-    renderer:   Renderer
+    renderer:   Renderer,
+    dt_accumulator: f32,
+    last_render_time: std::time::Instant
 }
 
 struct App<'a> {
@@ -42,14 +44,53 @@ impl<'a> winit::application::ApplicationHandler for App<'a> {
 
         let mut state = AppState { 
             nes: NES::new(cart, None, None),
-            renderer: Renderer::new(Arc::new(event_loop.create_window(Default::default()).unwrap()))
+            renderer: Renderer::new(Arc::new(event_loop.create_window(Default::default()).unwrap())),
+            dt_accumulator: 0.,
+            last_render_time: std::time::Instant::now()
         };
 
         state.nes.reset();
 
+        const N: u32 = 3;
+
         state.renderer.window.set_min_inner_size(Some(winit::dpi::Size::Physical(winit::dpi::PhysicalSize::new(256, 240))));
-        
+        let _ = state.renderer.window.request_inner_size(winit::dpi::Size::Physical(winit::dpi::PhysicalSize::new(256 * N, 240 * N)));
+
         self.state = Some(state);
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let now = std::time::Instant::now();
+        let elapsed = now.duration_since(state.last_render_time).as_secs_f32();
+
+        state.last_render_time = now;
+        
+        state.dt_accumulator += elapsed;
+
+        if state.dt_accumulator > 0.1 {
+            state.dt_accumulator = 0.1;
+        }
+
+        let mut needs_redraw = false;
+
+        while state.dt_accumulator >= 0.0166 {
+            let target_frame = state.nes.bus.ppu.frame + 1;
+            
+            while state.nes.bus.ppu.frame < target_frame {
+                state.nes.tick();
+            }
+
+            state.dt_accumulator -= 0.0166;
+            needs_redraw = true;
+        }
+
+        if needs_redraw {
+            state.renderer.window.request_redraw();
+        }
     }
 
     fn window_event(
@@ -66,6 +107,7 @@ impl<'a> winit::application::ApplicationHandler for App<'a> {
         if state.renderer.window.id() != window_id { return; }
 
         match event {
+
             winit::event::WindowEvent::Resized(size) => {
                 state.renderer.config.width = size.width;
                 state.renderer.config.height = size.height;
@@ -78,16 +120,8 @@ impl<'a> winit::application::ApplicationHandler for App<'a> {
             }
 
             winit::event::WindowEvent::RedrawRequested => {
-                let f = state.nes.bus.ppu.frame;
-
-                while state.nes.bus.ppu.frame == f {
-                    state.nes.tick();
-                }
-
                 state.renderer.upload_framebuffer(&state.nes.framebuffer);
                 state.renderer.render();
-
-                state.renderer.window.request_redraw();
             }
             _ => {}
         }
@@ -97,5 +131,6 @@ impl<'a> winit::application::ApplicationHandler for App<'a> {
 fn main() {
     let event_loop = EventLoop::new().unwrap();
 
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll); // Keep checking time continuously
     event_loop.run_app(&mut App{ state: None }).unwrap();
 }

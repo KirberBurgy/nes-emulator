@@ -45,7 +45,7 @@ impl Renderer {
 
         let caps = surface.get_capabilities(&adapter);
 
-        let format = caps.formats[0];
+        let format = wgpu::TextureFormat::Bgra8Unorm;//caps.formats[0];
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
@@ -141,7 +141,7 @@ impl Renderer {
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
+            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
         });
 
         let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
