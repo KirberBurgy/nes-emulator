@@ -24,26 +24,25 @@ pub mod nes;
 
 pub mod renderer;
 
-
-struct AppState<'a> {
-    nes:        NES<'a>,
+struct AppState {
+    nes:        NES,
     renderer:   Renderer,
     dt_accumulator: f32,
     last_render_time: std::time::Instant
 }
 
-struct App<'a> {
-    state: Option<AppState<'a>>
+struct App {
+    state: Option<AppState>
 }
 
-impl<'a> winit::application::ApplicationHandler for App<'a> {
+impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.state.is_some() { return; }
 
-        let cart = Cartridge::load("tests/roms/Donkey Kong.nes").unwrap();
+        let cart = Cartridge::load("tests/roms/Super Mario Bros.nes").unwrap();
 
         let mut state = AppState { 
-            nes: NES::new(cart, None, None),
+            nes: NES::new(cart),
             renderer: Renderer::new(Arc::new(event_loop.create_window(Default::default()).unwrap())),
             dt_accumulator: 0.,
             last_render_time: std::time::Instant::now()
@@ -107,7 +106,6 @@ impl<'a> winit::application::ApplicationHandler for App<'a> {
         if state.renderer.window.id() != window_id { return; }
 
         match event {
-
             winit::event::WindowEvent::Resized(size) => {
                 state.renderer.config.width = size.width;
                 state.renderer.config.height = size.height;
@@ -122,6 +120,27 @@ impl<'a> winit::application::ApplicationHandler for App<'a> {
             winit::event::WindowEvent::RedrawRequested => {
                 state.renderer.upload_framebuffer(&state.nes.framebuffer);
                 state.renderer.render();
+            },
+
+            winit::event::WindowEvent::KeyboardInput { device_id, event, is_synthetic } => {
+                let winit::keyboard::PhysicalKey::Code(code) = event.physical_key else { 
+                    return;
+                };
+
+                let on = matches!(event.state, winit::event::ElementState::Pressed);
+
+                match code {
+                    winit::keyboard::KeyCode::ArrowLeft     => state.nes.bus.player_1.left      = on,
+                    winit::keyboard::KeyCode::ArrowRight    => state.nes.bus.player_1.right     = on,
+                    winit::keyboard::KeyCode::ArrowUp       => state.nes.bus.player_1.up        = on,
+                    winit::keyboard::KeyCode::ArrowDown     => state.nes.bus.player_1.down      = on,
+                    winit::keyboard::KeyCode::Backspace     => state.nes.bus.player_1.select    = on,
+                    winit::keyboard::KeyCode::Enter         => state.nes.bus.player_1.start     = on,
+                    winit::keyboard::KeyCode::KeyZ          => state.nes.bus.player_1.a         = on,
+                    winit::keyboard::KeyCode::KeyX          => state.nes.bus.player_1.b         = on,
+
+                    _ => {}
+                }
             }
             _ => {}
         }

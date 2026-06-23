@@ -2,23 +2,23 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{cartridge::Cartridge, controller::Controller, ppu::PPU};
 
-pub struct MemoryBus<'a> {
+pub struct MemoryBus {
     pub ram:        Box<[u8; 0x0800]>,
     pub cartridge:  Rc<RefCell<Cartridge>>,
     
     pub ppu:        PPU,
     
-    pub player_1:   Option<Controller<'a>>,
-    pub player_2:   Option<Controller<'a>>,
+    pub player_1:   Controller,
+    pub player_2:   Controller,
     
     pub dma_signal: bool
 }
 
-impl<'a> MemoryBus<'a> {
-    pub fn new(cartridge: Cartridge, player_1: Option<Controller<'a>>, player_2: Option<Controller<'a>>) -> Self {
+impl MemoryBus {
+    pub fn new(cartridge: Cartridge) -> Self {
         let cell = Rc::new(RefCell::new(cartridge));
 
-        Self { ram: Box::new([0; 0x0800]), ppu: PPU::new(cell.clone()), player_1, player_2, cartridge: cell, dma_signal: false }
+        Self { ram: Box::new([0; 0x0800]), ppu: PPU::new(cell.clone()), player_1: Controller::new(), player_2: Controller::new(), cartridge: cell, dma_signal: false }
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -33,15 +33,8 @@ impl<'a> MemoryBus<'a> {
                 _ => unreachable!()
             },
 
-            0x4016          => match &mut self.player_1 {
-                Some(controller)    => controller.read(),
-                None                => 0
-            },
-
-            0x4017          => match &mut self.player_2 {
-                Some(controller)    => controller.read(),
-                None                => 0
-            },
+            0x4016          => self.player_1.read(),
+            0x4017          => self.player_2.read(),
 
             0x8000..        => self.cartridge.borrow_mut().prg_read(addr),
 
@@ -78,13 +71,8 @@ impl<'a> MemoryBus<'a> {
             },
 
             0x4016          => {
-                if let Some(controller) = &mut self.player_1 {
-                    controller.write(value);
-                }
-
-                if let Some(controller) = &mut self.player_2 {
-                    controller.write(value);
-                }
+                self.player_1.write(value);
+                self.player_2.write(value);
             }
 
             0x8000..        => self.cartridge.borrow_mut().prg_write(addr, value),

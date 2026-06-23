@@ -1,26 +1,22 @@
 use crate::bit_utils::{bit_set};
 
-pub trait ControllerInput {
-    fn right    (&self) -> bool;
-    fn left     (&self) -> bool;
-    fn down     (&self) -> bool;
-    fn up       (&self) -> bool;
-    fn start    (&self) -> bool;
-    fn select   (&self) -> bool;
-    fn b        (&self) -> bool;
-    fn a        (&self) -> bool;
+pub struct Controller {
+    pub a:      bool,
+    pub b:      bool,
+    pub left:   bool,
+    pub right:  bool,
+    pub up:     bool,
+    pub down:   bool,
+    pub start:  bool,
+    pub select: bool,
+
+    pub output: u8,
+    pub latch:  bool
 }
 
-pub struct Controller<'a> {
-    pub input:      &'a dyn ControllerInput,
-
-    pub output:     u8,
-    pub latch:      bool
-}
-
-impl<'a> Controller<'a> {
-    pub fn new(input: &'a impl ControllerInput) -> Self {
-        Self { input, output: 0, latch: false }
+impl Controller {
+    pub fn new() -> Self {
+        Self { a: false, b: false, left: false, right: false, up: false, down: false, start: false, select: false, output: 0, latch: false }
     }
 
     pub fn write(&mut self, to: u8) {
@@ -29,14 +25,14 @@ impl<'a> Controller<'a> {
         // Fill the output shifter with controller data.
         if !self.latch && bit {
             self.output =
-                ((self.input.a      () as u8) << 7) |
-                ((self.input.b      () as u8) << 6) |
-                ((self.input.select () as u8) << 5) |
-                ((self.input.start  () as u8) << 4) |
-                ((self.input.up     () as u8) << 3) |
-                ((self.input.down   () as u8) << 2) |
-                ((self.input.left   () as u8) << 1) |
-                ( self.input.right  () as u8      );
+                ((self.a      as u8) << 7) |
+                ((self.b      as u8) << 6) |
+                ((self.select as u8) << 5) |
+                ((self.start  as u8) << 4) |
+                ((self.up     as u8) << 3) |
+                ((self.down   as u8) << 2) |
+                ((self.left   as u8) << 1) |
+                ( self.right  as u8      );
         }
 
         self.latch = bit;
@@ -44,7 +40,7 @@ impl<'a> Controller<'a> {
 
     pub fn read(&mut self) -> u8 {
         if self.latch { 
-            return self.input.a() as u8;
+            return self.a as u8;
         }
 
         let bit = bit_set(self.output, 7) as u8;
