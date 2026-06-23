@@ -10,7 +10,7 @@ pub mod cpu;
 pub mod instructions;
 
 pub mod ppu;
-
+pub mod apu;
 pub mod controller;
 
 pub mod mapper;
