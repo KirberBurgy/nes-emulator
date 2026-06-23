@@ -6,17 +6,22 @@ use winit::window::Window;
 use crate::nes::NES_PALETTE;
 
 pub struct Renderer {
-    pub window:         Arc<Window>,
-    pub surface:        wgpu::Surface<'static>,
-    pub device:         wgpu::Device,
-    pub queue:          wgpu::Queue,
-    pub config:         wgpu::SurfaceConfiguration,
+    pub window:             Arc<Window>,
+    pub surface:            wgpu::Surface<'static>,
+    pub device:             wgpu::Device,
+    pub queue:              wgpu::Queue,
+    pub config:             wgpu::SurfaceConfiguration,
 
-    pub bind_group:     wgpu::BindGroup,
-    pub pipeline:       wgpu::ComputePipeline,
+    pub blit_pipeline:      wgpu::RenderPipeline,
+    pub blit_bind_group:    wgpu::BindGroup,
 
-    pub framebuffer:    wgpu::Buffer,
-    pub out_tex:        wgpu::Texture
+    pub bind_group:         wgpu::BindGroup,
+    pub pipeline:           wgpu::ComputePipeline,
+
+    pub framebuffer:        wgpu::Buffer,
+    pub out_tex:            wgpu::Texture,
+
+    pub dirty:              bool
 }
 
 impl Renderer {
@@ -79,7 +84,7 @@ impl Renderer {
                     binding: 1,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -134,9 +139,9 @@ impl Renderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format,
+            format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+            view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
         });
 
         let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -160,90 +165,183 @@ impl Renderer {
             ],
         });
         
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("NES Screen Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        let blit_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Blit Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+
+        let blit_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Blit Bind Group"),
+            layout: &blit_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&output_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+
+        let blit_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Blit Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader/blit.wgsl").into()),
+        });
+
+        let blit_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Blit Pipeline Layout"),
+            bind_group_layouts: &[Some(&blit_bind_group_layout)],
+            immediate_size: 0,
+        });
+
+        let blit_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Blit Render Pipeline"),
+            layout: Some(&blit_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &blit_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &blit_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
         Self { 
             window, 
             surface, 
             device, 
             queue, 
+
+            blit_bind_group,
+            blit_pipeline,
+
             config, 
             bind_group, 
+            
             out_tex: output_texture, 
             framebuffer, 
-            pipeline
+            pipeline,
+            dirty:  false
         }
     }
 
     pub fn upload_framebuffer(&mut self, framebuffer: &[u8; 256 * 240]) {
-        let mut packed = [0; 256 * 240 / 4];
-
-        for i in 0..15360 {
-            packed[i] =
-                (framebuffer[i * 4] as u32)             |
-                ((framebuffer[i * 4 + 1] as u32) << 8)  |
-                ((framebuffer[i * 4 + 2] as u32) << 16) |
-                ((framebuffer[i * 4 + 3] as u32) << 24);
-        }
-
-        self.queue.write_buffer(&self.framebuffer, 0, bytemuck::cast_slice(&packed));
+        self.queue.write_buffer(&self.framebuffer, 0, bytemuck::cast_slice(framebuffer));
     }
 
     pub fn render(&mut self) {
-        use wgpu::CurrentSurfaceTexture;
+        if self.dirty {
+            self.config.width = self.window.inner_size().width;
+            self.config.height = self.window.inner_size().height;
+                
+            if self.config.width > 0 && self.config.height > 0 {
+                self.surface.configure(&self.device, &self.config);
+            }
+
+            self.dirty = false;
+        }
 
         let frame = match self.surface.get_current_texture() {
-            CurrentSurfaceTexture::Success(surface_texture) => surface_texture,
-            CurrentSurfaceTexture::Suboptimal(surface_texture) => {
-                self.config.width = self.window.inner_size().width;
-                self.config.height = self.window.inner_size().height;
-
-                self.surface.configure(&self.device, &self.config);
+            wgpu::CurrentSurfaceTexture::Success(surface_texture) => surface_texture,
+            
+            wgpu::CurrentSurfaceTexture::Suboptimal(surface_texture) => {
+                self.dirty = true;
 
                 surface_texture
             }
-
-            _ => return
+            
+            _ => return,
         };
 
-        let mut encoder =
-        self.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            }
-        );
+        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Render Encoder"),
+        });
 
         {
-            let mut compute_pass = encoder
-            .begin_compute_pass(&wgpu::ComputePassDescriptor{
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("NES Compute Pass"),
                 timestamp_writes: None,
             });
             
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &self.bind_group, &[]);
-            compute_pass.dispatch_workgroups(64, 240, 1);
+            compute_pass.dispatch_workgroups(64, 240, 1); 
         }
 
-        encoder.copy_texture_to_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.out_tex,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyTextureInfo {
-                texture: &frame.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::Extent3d {
-                width: 256,
-                height: 240,
-                depth_or_array_layers: 1,
-            },
-        );
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Fullscreen Blit Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+
+            render_pass.set_pipeline(&self.blit_pipeline);
+            render_pass.set_bind_group(0, &self.blit_bind_group, &[]);
+            
+            render_pass.draw(0..6, 0..1);
+        }
 
         self.queue.submit(Some(encoder.finish()));
+        
         frame.present();
     }
 

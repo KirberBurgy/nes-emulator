@@ -18,7 +18,7 @@ pub struct NES<'a> {
     pub cpu:            CPU,
     pub bus:            MemoryBus<'a>,
 
-    pub framebuffer:    Box<[(u8, u8, u8); 256 * 240]>
+    pub framebuffer:    Box<[u8; 256 * 240]>
 }
 
 impl<'a> NES<'a> {
@@ -28,7 +28,7 @@ impl<'a> NES<'a> {
 
             bus: MemoryBus::new(cart, player_1, player_2), 
             
-            framebuffer: Box::new([(0, 0, 0); 256 * 240]) 
+            framebuffer: Box::new([0; 256 * 240]) 
         }
     }
 
@@ -73,7 +73,7 @@ impl<'a> NES<'a> {
                 
                 let index = x + y * 256;
 
-                self.framebuffer[index] = NES_PALETTE[self.bus.ppu.pal_read(self.bus.ppu.palette_index) as usize];
+                self.framebuffer[index] = self.bus.ppu.pal_read(self.bus.ppu.palette_index);
             }
         }
     }

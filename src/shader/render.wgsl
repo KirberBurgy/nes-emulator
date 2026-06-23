@@ -10,19 +10,17 @@ var output_tex: texture_storage_2d<rgba8unorm, write>;
 @compute @workgroup_size(4, 1)
 fn main(
     @builtin(global_invocation_id) gid: vec3<u32>,
-    @builtin(local_invocation_id) lid: vec3<u32>
+    @builtin(local_invocation_id) lid: vec3<u32>,
+    @builtin(workgroup_id) wgid: vec3<u32> // <-- Added this to track the strip index
 ) 
 {
-    // There are 256 pixels,
-    // 64 4x1 pixel strips per scanline,
-    // and each work group handles one pixel strip.
-    let strip_index = gid.x + gid.y * 64u;
+    // wgid.x ranges from 0 to 63, representing the 64 strips per scanline.
+    let strip_index = wgid.x + gid.y * 64u;
     let strip = framebuffer[strip_index];
     
-    // Since the palette is only 64 colors large
-    // we want to avoid overflows by masking out
-    // the most significant two bits.
-    let byte_index = (strip >> (lid.x * 8u)) & 0x3F;
+    // Each of the 4 threads extracts its specific 8-bit color index from the 32-bit strip.
+    let byte_index = (strip >> (lid.x * 8u)) & 0x3Fu;
 
-    textureStore(output_tex, vec2u(gid.x + lid.x, gid.y), palette[byte_index]);
+    // gid.x is already (wgid.x * 4 + lid.x), mapping perfectly to columns 0-255.
+    textureStore(output_tex, vec2u(gid.x, gid.y), palette[byte_index]);
 }
