@@ -528,7 +528,7 @@ impl PPU {
     }
 
     fn render_sprites(&mut self, bg_opaque: bool) {
-        let current_x = self.cycle as usize - 1;
+        let current_x = self.cycle as usize;
 
         for i in 0..self.sprite_count {
             let x = self.sprite_xs[i] as usize;
@@ -585,8 +585,8 @@ impl PPU {
                 let rendering = self.rendering();
                 
                 if (1..=256).contains(&self.cycle) || (321..=336).contains(&self.cycle) {
-                    self.perform_fetches();
                     self.shift_shifters();
+                    self.perform_fetches();
                     
                     if self.cycle % 8 == 0 && rendering {
                         self.increment_x();

@@ -62,6 +62,7 @@ impl NES {
 
 
         for _ in 0..3 {
+            
             self.bus.ppu.tick();
 
             let scanline = self.bus.ppu.scanline;
