@@ -20,7 +20,7 @@ pub struct APUPulse {
     pub sweep_reload:       bool,
 
     pub halt:               bool,
-    pub constant_vol:       bool,
+    pub constant_volume:    bool,
 
     pub timer_reset:        u16,
     pub timer:              u16,
@@ -50,7 +50,7 @@ impl APUPulse {
             sweep_reload:       false,
 
             halt:               false,
-            constant_vol:       false,
+            constant_volume:    false,
 
             timer_reset:        0,
             timer:              0,
@@ -86,7 +86,7 @@ impl APUPulse {
 
     pub fn write_misc(&mut self, to: u8) {
         self.envelope_period    = get_bits(to, 0..4);
-        self.constant_vol       = bit_set(to, 4);
+        self.constant_volume    = bit_set(to, 4);
         self.halt               = bit_set(to, 5);
         self.duty_cycle         = get_bits(to, 6..8);
     }
@@ -183,7 +183,7 @@ impl APUPulse {
             return 0;
         }
 
-        if self.constant_vol {
+        if self.constant_volume {
             self.envelope_period
         }
         else {
