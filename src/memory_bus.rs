@@ -36,6 +36,7 @@ impl MemoryBus {
             0x4016          => self.player_1.read(),
             0x4017          => self.player_2.read(),
 
+            0x6000..0x8000  => self.cartridge.borrow_mut().prg_ram_read(addr),
             0x8000..        => self.cartridge.borrow_mut().prg_read(addr),
 
             _ => 0 
@@ -75,6 +76,7 @@ impl MemoryBus {
                 self.player_2.write(value);
             }
 
+            0x6000..0x8000  => self.cartridge.borrow_mut().prg_ram_write(addr, value),
             0x8000..        => self.cartridge.borrow_mut().prg_write(addr, value),
 
             _ => {}

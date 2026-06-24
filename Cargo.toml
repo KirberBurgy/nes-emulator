@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 bytemuck = "1.25.0"
+cpal = "0.18.1"
 futures = "0.3.32"
 num-traits = "0.2.19"
 serde = "1.0.228"

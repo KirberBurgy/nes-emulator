@@ -3,8 +3,7 @@ use std::{fs::File, io::{BufReader, Read}};
 use crate::{bit_utils::{bit_set, get_bits}, mapper::{Mapper, NametableMirroring}, mappers::new_mapper};
 
 pub struct Cartridge {
-    pub mirroring:  NametableMirroring,
-    pub mapper:     Box<dyn Mapper>,
+    pub mapper:     Box<dyn Mapper>
 }
 
 impl Cartridge {
@@ -51,24 +50,24 @@ impl Cartridge {
         };
 
         println!("Using mapper #{}.", mapper_number);
-
-        let mirroring = 
-            if bit_set(header[6], 0) { NametableMirroring::Vertical }
-            else { NametableMirroring::Horizontal };
-
-        println!("Using nametable mirroring '{:?}.'", mirroring);
         
         let mut prg_rom = Vec::with_capacity(prg_rom_size);
         prg_rom.resize(prg_rom_size, 0);
         reader.read_exact(&mut prg_rom).unwrap();
 
-        let mut chr_rom = Vec::with_capacity(chr_rom_size);
-        chr_rom.resize(chr_rom_size, 0);
-        reader.read_exact(&mut chr_rom).unwrap();
+        let chr = if chr_rom_size != 0 {
+            let mut chr_rom = Vec::with_capacity(chr_rom_size);
+            chr_rom.resize(chr_rom_size, 0);
+            reader.read_exact(&mut chr_rom).unwrap();
 
-        let mapper = new_mapper(prg_rom, chr_rom, mapper_number);
+            chr_rom
+        }
+        else { println!("Cartridge uses CHR RAM."); vec![0; 0x2000] };
 
-        Some(Cartridge { mirroring, mapper })
+
+        let mapper = new_mapper(prg_rom, chr, &header, mapper_number);
+
+        Some(Cartridge { mapper })
     }
 
     fn load_nes20(reader: &mut BufReader<File>, header: [u8; 16]) -> Option<Cartridge> {
@@ -76,23 +75,8 @@ impl Cartridge {
         Self::load_ines(reader, header)
     }
 
-    fn mirrored_address(mode: NametableMirroring, addr: u16) -> u16 {
-        match mode {
-            NametableMirroring::Horizontal  => {
-                match addr {
-                    0x0400..0x0C00 => addr - 0x0400,
-                    0x0C00..0x1000 => addr - 0x0800,
-
-                    _ => addr
-                }
-            }
-
-            NametableMirroring::Vertical    => {
-                addr % 0x0800
-            }
-
-            NametableMirroring::FourScreen  => addr,
-        }
+    pub fn prg_ram_read(&mut self, addr: u16) -> u8 {
+        self.mapper.prg_ram_read(addr - 0x6000)
     }
 
     // Assumes `addr` is in the range 0x8000-0xFFFF
@@ -107,9 +91,12 @@ impl Cartridge {
 
     // Assumes `addr` is in the range 0x2000-0x3FFF
     pub fn vram_read(&mut self, addr: u16) -> u8 {
-        self.mapper.vram_read(Self::mirrored_address(self.mirroring, addr - 0x2000))
+        self.mapper.vram_read(addr - 0x2000)
     }
 
+    pub fn prg_ram_write(&mut self, addr: u16, value: u8) {
+        self.mapper.prg_ram_write(addr - 0x6000, value)
+    }
 
     pub fn prg_write(&mut self, addr: u16, value: u8) {
         self.mapper.prg_write(addr - 0x8000, value);
@@ -120,6 +107,6 @@ impl Cartridge {
     }
 
     pub fn vram_write(&mut self, addr: u16, value: u8) {
-        self.mapper.vram_write(Self::mirrored_address(self.mirroring, addr - 0x2000), value);
+        self.mapper.vram_write(addr - 0x2000, value);
     }
 }

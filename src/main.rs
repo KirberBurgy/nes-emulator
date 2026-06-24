@@ -39,7 +39,7 @@ impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.state.is_some() { return; }
 
-        let cart = Cartridge::load("tests/roms/Super Mario Bros.nes").unwrap();
+        let cart = Cartridge::load("tests/roms/The Legend of Zelda.nes").unwrap();
 
         let mut state = AppState { 
             nes: NES::new(cart),
