@@ -1,8 +1,9 @@
-use std::{fs::File, io::{BufReader, Read}};
+use std::{fs::File, io::{BufReader, Read, Write}, path::Path};
 
-use crate::{bit_utils::{bit_set, get_bits}, mapper::{Mapper, NametableMirroring}, mappers::new_mapper};
+use crate::{bit_utils::{bit_set, get_bits}, mapper::{Mapper}, mappers::new_mapper};
 
 pub struct Cartridge {
+    pub name:       String,
     pub mapper:     Box<dyn Mapper>
 }
 
@@ -26,18 +27,19 @@ impl Cartridge {
         if is_nes20 {
             println!("Loading NES 2.0 image...");
 
-            Self::load_nes20(&mut reader, header)
+            Self::load_nes20(name, &mut reader, header)
         }
         else {
             println!("Loading iNES image...");
 
-            Self::load_ines(&mut reader, header)
+            Self::load_ines(name, &mut reader, header)
         }
     }
 
-    fn load_ines(reader: &mut BufReader<File>, header: [u8; 16]) -> Option<Cartridge> {
+    fn load_ines(name: &str, reader: &mut BufReader<File>, header: [u8; 16]) -> Option<Cartridge> {
         let prg_rom_size = 0x4000 * header[4] as usize;
         let chr_rom_size = 0x2000 * header[5] as usize;
+        let prg_ram_size = 0x2000 * header[8] as usize;
 
         println!("Program ROM size: {}", prg_rom_size);
         println!("Character ROM size: {}", chr_rom_size);
@@ -49,8 +51,12 @@ impl Cartridge {
             lsn | (msn << 4)
         };
 
-        println!("Using mapper #{}.", mapper_number);
+        if bit_set(header[6], 2) {
+            println!("Cartridge contains a trainer.");
+        }
         
+        println!("Using mapper #{}.", mapper_number);
+
         let mut prg_rom = Vec::with_capacity(prg_rom_size);
         prg_rom.resize(prg_rom_size, 0);
         reader.read_exact(&mut prg_rom).unwrap();
@@ -65,14 +71,39 @@ impl Cartridge {
         else { println!("Cartridge uses CHR RAM."); vec![0; 0x2000] };
 
 
-        let mapper = new_mapper(prg_rom, chr, &header, mapper_number);
+        let prg_ram = if bit_set(header[6], 1) {
+            let save_file_path = Path::new(name)
+                .with_extension("sram");
 
-        Some(Cartridge { mapper })
+            if let Ok(mut save_file) = File::open(save_file_path) {
+                println!("Save file identified.");
+                
+                let mut sram = Vec::new();
+                save_file.read_to_end(&mut sram).unwrap();
+
+                Some(sram)
+            }
+            else {
+                None
+            }
+        }
+        else if prg_ram_size > 0 {
+            println!("Cartridge uses non-battery-backed PRG RAM.");
+
+            Some(vec![0; prg_ram_size])
+        }
+        else {
+            None
+        };
+
+        let mapper = new_mapper(prg_rom, chr, prg_ram, &header, mapper_number);
+
+        Some(Cartridge { name: name.to_owned(), mapper })
     }
 
-    fn load_nes20(reader: &mut BufReader<File>, header: [u8; 16]) -> Option<Cartridge> {
+    fn load_nes20(name: &str, reader: &mut BufReader<File>, header: [u8; 16]) -> Option<Cartridge> {
         // Right now there are no differences.
-        Self::load_ines(reader, header)
+        Self::load_ines(name, reader, header)
     }
 
     pub fn prg_ram_read(&mut self, addr: u16) -> u8 {
@@ -108,5 +139,17 @@ impl Cartridge {
 
     pub fn vram_write(&mut self, addr: u16, value: u8) {
         self.mapper.vram_write(addr - 0x2000, value);
+    }
+
+    pub fn save_sram(&mut self) {
+        let mut file = File::create(Path::new(&self.name).with_extension("sram")).unwrap();
+
+        let mut ram = [0; 0x2000];
+
+        for i in 0x0000..0x2000 {
+            ram[i] = self.mapper.prg_ram_read(i as u16);
+        }
+
+        file.write_all(&mut ram).unwrap();
     }
 }

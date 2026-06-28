@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use winit::event_loop::EventLoop;
+use winit::{event::ElementState, event_loop::EventLoop};
 
-use crate::{cartridge::Cartridge, nes::NES, renderer::Renderer};
+use crate::{bit_utils::copy_bit_ranges, cartridge::Cartridge, nes::NES, renderer::Renderer};
 
 pub mod bit_utils;
 
@@ -39,8 +39,9 @@ impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.state.is_some() { return; }
 
-        let cart = Cartridge::load("tests/roms/The Legend of Zelda.nes").unwrap();
-
+        let cart = Cartridge::load("tests/roms/Mega Man 2.nes").unwrap();
+ 
+        std::thread::sleep(std::time::Duration::from_secs(5));
         let mut state = AppState { 
             nes: NES::new(cart),
             renderer: Renderer::new(Arc::new(event_loop.create_window(Default::default()).unwrap())),
@@ -138,6 +139,8 @@ impl winit::application::ApplicationHandler for App {
                     winit::keyboard::KeyCode::Enter         => state.nes.bus.player_1.start     = on,
                     winit::keyboard::KeyCode::KeyZ          => state.nes.bus.player_1.a         = on,
                     winit::keyboard::KeyCode::KeyX          => state.nes.bus.player_1.b         = on,
+
+                    winit::keyboard::KeyCode::KeyS          => state.nes.bus.cartridge.borrow_mut().save_sram(),
 
                     _ => {}
                 }

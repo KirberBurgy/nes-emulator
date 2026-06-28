@@ -144,7 +144,7 @@ impl PPU {
 
             palette_ram:    [0; 0x020],
 
-            palette_index:  0,
+            palette_index:  0x3F00,
 
             cycle:          0,
             scanline:       261,
@@ -324,24 +324,30 @@ impl PPU {
     }
 
     pub fn ppudata_read(&mut self) -> u8 {
-        let byte = match self.v {
+        let mirrored_v = self.v & 0x3FFF;
+
+        let byte = match mirrored_v {
             0x0000..0x3F00 => {
                 let ret = self.buffer;
 
-                self.buffer = self.ppu_read(self.v);
+                self.buffer = self.ppu_read(mirrored_v);
 
                 ret
             }
 
             0x3F00..0x4000 => {
-                let ret = self.pal_read(self.v);
+                let ret = self.pal_read(mirrored_v);
 
-                self.buffer = self.ppu_read(self.v - 0x1000);
+                self.buffer = self.ppu_read(mirrored_v - 0x1000);
 
                 ret
             }
 
-            _ => unreachable!(),
+            _ => {
+                println!("Attempted to read at {:04X}!", mirrored_v);
+
+                unreachable!()
+            },
         };
 
         self.v = self.v.wrapping_add(self.increment());

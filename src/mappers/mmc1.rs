@@ -1,7 +1,7 @@
 use crate::{bit_utils::{bit_set, get_bits, set_bit}, mapper::{Mapper, NametableMirroring}, mappers::mirrored_address};
 
 pub struct MMC1 {
-    pub prg_ram:    Box<[u8; 0x2000]>,
+    pub prg_ram:    Vec<u8>,
 
     pub prg_rom:    Vec<u8>,
     pub chr_rom:    Vec<u8>,
@@ -20,14 +20,10 @@ pub struct MMC1 {
 }
 
 impl MMC1 {
-    pub fn new(prg: Vec<u8>, chr: Vec<u8>, header: &[u8; 0x10]) -> MMC1 {
-        let control = 
-            if bit_set(header[6], 0) { 0b00010 }
-            else { 0b00011 };
-
+    pub fn new(prg: Vec<u8>, chr: Vec<u8>, prg_ram: Option<Vec<u8>>, _header: &[u8; 0x10]) -> MMC1 {
         MMC1
         {
-            prg_ram:    Box::new([0; 0x2000]),
+            prg_ram:    if let Some(ram) = prg_ram { ram } else { vec![0; 0x2000] },
             
             prg_rom:    prg,
             chr_rom:    chr,
@@ -37,7 +33,7 @@ impl MMC1 {
             shift:      0,
             writes:     0,
 
-            control,
+            control:    0b01100,
 
             prg_bank:   0,
 
@@ -119,7 +115,7 @@ impl Mapper for MMC1 {
                 }
             }
             0x4000..0x6000  => {
-                if !bit_set(self.control, 4) {
+                if bit_set(self.control, 4) {
                     self.chr_bank_2 = self.shift as usize;
                 }
             }
