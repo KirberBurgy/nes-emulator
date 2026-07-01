@@ -46,7 +46,8 @@ impl NES {
         }
 
         self.cpu.tick(&mut self.bus);
-
+        self.bus.apu.tick();
+        
         if self.bus.dma_signal {
             // Hack: to get the cycle which the DMA transfer began on
             // we just minus one from the cycles (since tick advances one cycle always).

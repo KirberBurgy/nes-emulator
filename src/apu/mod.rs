@@ -1,4 +1,4 @@
-use crate::{apu::{noise::APUNoise, pulse::APUPulse, triangle::APUTriangle}, bit_utils::{bit_set, get_bits}};
+use crate::{apu::{mixer::APUMixer, noise::APUNoise, pulse::APUPulse, triangle::APUTriangle}, bit_utils::{bit_set, get_bits}};
 
 pub mod pulse;
 pub mod triangle;
@@ -30,6 +30,8 @@ pub struct APU {
     pub triangle:   APUTriangle,
     pub noise:      APUNoise,
     //  dmc:        APUDMC
+    
+    pub mixer:      APUMixer,
 
     pub status:     u8,
 
@@ -48,6 +50,8 @@ impl APU {
             triangle:   APUTriangle::new(),
             noise:      APUNoise::new(),
             
+            mixer:      APUMixer::new(),
+
             status:     0b11111,
             mode:       false,
             irq:        false,
@@ -192,5 +196,15 @@ impl APU {
 
     fn disable_irq_until_next(&mut self) {
         self.irq_done = true;
+    }
+
+    pub fn output(&self) -> f32 {
+        self.mixer.mix(
+            self.pulse_1.volume(), 
+            self.pulse_2.volume(), 
+            self.triangle.volume(), 
+            self.noise.volume(), 
+            0 // TO DO
+        )
     }
 }

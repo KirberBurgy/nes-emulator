@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use winit::{event::ElementState, event_loop::EventLoop};
 
-use crate::{bit_utils::copy_bit_ranges, cartridge::Cartridge, nes::NES, renderer::Renderer};
+use crate::{audio_player::AudioPlayer, bit_utils::copy_bit_ranges, cartridge::Cartridge, nes::NES, renderer::Renderer};
 
 pub mod bit_utils;
 
@@ -23,10 +24,12 @@ pub mod cartridge;
 pub mod nes;
 
 pub mod renderer;
+pub mod audio_player;
 
 struct AppState {
     nes:        NES,
     renderer:   Renderer,
+    player:     AudioPlayer,
     dt_accumulator: f32,
     last_render_time: std::time::Instant
 }
@@ -39,17 +42,20 @@ impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.state.is_some() { return; }
 
-        let cart = Cartridge::load("tests/roms/Mega Man 2.nes").unwrap();
+        let cart = Cartridge::load("tests/roms/The Legend of Zelda.nes").unwrap();
  
         std::thread::sleep(std::time::Duration::from_secs(5));
+
         let mut state = AppState { 
-            nes: NES::new(cart),
-            renderer: Renderer::new(Arc::new(event_loop.create_window(Default::default()).unwrap())),
-            dt_accumulator: 0.,
-            last_render_time: std::time::Instant::now()
+            nes:                NES::new(cart),
+            player:             AudioPlayer::new(),
+            renderer:           Renderer::new(Arc::new(event_loop.create_window(Default::default()).unwrap())),
+            dt_accumulator:     0.,
+            last_render_time:   std::time::Instant::now()
         };
 
         state.nes.reset();
+        state.player.play();
 
         const N: u32 = 3;
 
@@ -82,6 +88,7 @@ impl winit::application::ApplicationHandler for App {
             
             while state.nes.bus.ppu.frame < target_frame {
                 state.nes.tick();
+                state.player.tick(&state.nes.bus.apu);
             }
 
             state.dt_accumulator -= 0.0166;
@@ -150,9 +157,11 @@ impl winit::application::ApplicationHandler for App {
     }
 }
 
+
+
 fn main() {
     let event_loop = EventLoop::new().unwrap();
 
-    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll); // Keep checking time continuously
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
     event_loop.run_app(&mut App{ state: None }).unwrap();
 }

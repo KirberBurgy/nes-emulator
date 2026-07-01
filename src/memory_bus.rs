@@ -1,12 +1,13 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{cartridge::Cartridge, controller::Controller, ppu::PPU};
+use crate::{apu::APU, cartridge::Cartridge, controller::Controller, ppu::PPU};
 
 pub struct MemoryBus {
     pub ram:        Box<[u8; 0x0800]>,
     pub cartridge:  Rc<RefCell<Cartridge>>,
     
     pub ppu:        PPU,
+    pub apu:        APU,
     
     pub player_1:   Controller,
     pub player_2:   Controller,
@@ -18,7 +19,16 @@ impl MemoryBus {
     pub fn new(cartridge: Cartridge) -> Self {
         let cell = Rc::new(RefCell::new(cartridge));
 
-        Self { ram: Box::new([0; 0x0800]), ppu: PPU::new(cell.clone()), player_1: Controller::new(), player_2: Controller::new(), cartridge: cell, dma_signal: false }
+        Self 
+        { 
+            ram: Box::new([0; 0x0800]), 
+            ppu: PPU::new(cell.clone()), 
+            apu: APU::new(),
+            player_1: Controller::new(), 
+            player_2: Controller::new(), 
+            cartridge: cell, 
+            dma_signal: false 
+        }
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -32,6 +42,8 @@ impl MemoryBus {
 
                 _ => unreachable!()
             },
+
+            0x4015          => self.apu.read(addr),
 
             0x4016          => self.player_1.read(),
             0x4017          => self.player_2.read(),
@@ -58,6 +70,9 @@ impl MemoryBus {
 
                 _ => unreachable!()
             },
+
+            0x4000..0x4014  |
+            0x4015 | 0x4017 => self.apu.write(addr, value),
 
             0x4014          => {
                 let mut new_oam = [0; 0x100];
