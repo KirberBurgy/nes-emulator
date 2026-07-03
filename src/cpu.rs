@@ -135,6 +135,10 @@ impl CPU {
         self.delay += self.jump_to_handler(bus, self.pc, 0xFFFA);
     }
 
+    pub fn jump_to_irq_handler(&mut self, bus: &mut MemoryBus) {
+        self.delay += self.jump_to_handler(bus, self.pc, 0xFFFE);
+    }
+
     pub fn jump_to_startup(&mut self, bus: &mut MemoryBus) {
         self.pc = self.read16(bus, 0xFFFC);
         self.delay += 7;

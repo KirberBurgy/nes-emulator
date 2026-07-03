@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use winit::{event::ElementState, event_loop::EventLoop};
+use cpal::traits::{DeviceTrait, StreamTrait};
+use winit::event_loop::EventLoop;
 
-use crate::{audio_player::AudioPlayer, bit_utils::copy_bit_ranges, cartridge::Cartridge, nes::NES, renderer::Renderer};
+use crate::{audio_player::AudioPlayer, cartridge::Cartridge, nes::NES, renderer::Renderer};
 
 pub mod bit_utils;
 
@@ -43,8 +43,7 @@ impl winit::application::ApplicationHandler for App {
         if self.state.is_some() { return; }
 
         let cart = Cartridge::load("tests/roms/The Legend of Zelda.nes").unwrap();
- 
-        std::thread::sleep(std::time::Duration::from_secs(5));
+
 
         let mut state = AppState { 
             nes:                NES::new(cart),
@@ -130,7 +129,7 @@ impl winit::application::ApplicationHandler for App {
                 state.renderer.render();
             },
 
-            winit::event::WindowEvent::KeyboardInput { device_id, event, is_synthetic } => {
+            winit::event::WindowEvent::KeyboardInput { device_id: _, event, is_synthetic: _ } => {
                 let winit::keyboard::PhysicalKey::Code(code) = event.physical_key else { 
                     return;
                 };

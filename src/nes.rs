@@ -37,20 +37,28 @@ impl NES {
     }
 
     pub fn tick(&mut self) {
-        if self.cpu.delay == 0 && self.bus.ppu.signaling_nmi() {
-            self.cpu.jump_to_nmi_handler(&mut self.bus);
+        if self.cpu.delay == 0 {
+            if self.bus.ppu.signaling_nmi() {
+                self.cpu.jump_to_nmi_handler(&mut self.bus);
 
-            // Hack: ensures that an NMI handler can't be jumped to
-            // more than once per frame.
-            self.bus.ppu.disable_nmi_this_frame();
+                self.bus.ppu.disable_nmi_this_frame();
+            }
+            else if self.bus.apu.dmc.signaling_irq() {
+                self.cpu.jump_to_irq_handler(&mut self.bus);
+
+                self.bus.apu.dmc.disable_irq_until_next();
+            }
+            else if self.bus.apu.signaling_irq() {
+                self.cpu.jump_to_irq_handler(&mut self.bus);
+
+                self.bus.apu.disable_irq_until_next();
+            }
         }
-
+        
         self.cpu.tick(&mut self.bus);
         self.bus.apu.tick();
-        
-        if self.bus.dma_signal {
-            // Hack: to get the cycle which the DMA transfer began on
-            // we just minus one from the cycles (since tick advances one cycle always).
+
+        if self.bus.transferring_oam {
             if (self.cpu.cycles - 1) % 2 == 0 {
                 self.cpu.delay += 513;
             }
@@ -58,9 +66,14 @@ impl NES {
                 self.cpu.delay += 514;
             }
 
-            self.bus.stop_dma_signal();
+            self.bus.done_oam_transfer();
         }
 
+        if self.bus.apu.dmc.transferring {
+            self.cpu.delay += 4;
+
+            self.bus.apu.dmc.done_transferring();
+        }
 
         for _ in 0..3 {
             

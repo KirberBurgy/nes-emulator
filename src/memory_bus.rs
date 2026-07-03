@@ -3,16 +3,16 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{apu::APU, cartridge::Cartridge, controller::Controller, ppu::PPU};
 
 pub struct MemoryBus {
-    pub ram:        Box<[u8; 0x0800]>,
-    pub cartridge:  Rc<RefCell<Cartridge>>,
+    pub ram:                Box<[u8; 0x0800]>,
+    pub cartridge:          Rc<RefCell<Cartridge>>,
     
-    pub ppu:        PPU,
-    pub apu:        APU,
+    pub ppu:                PPU,
+    pub apu:                APU,
     
-    pub player_1:   Controller,
-    pub player_2:   Controller,
+    pub player_1:           Controller,
+    pub player_2:           Controller,
     
-    pub dma_signal: bool
+    pub transferring_oam:   bool
 }
 
 impl MemoryBus {
@@ -21,13 +21,13 @@ impl MemoryBus {
 
         Self 
         { 
-            ram: Box::new([0; 0x0800]), 
-            ppu: PPU::new(cell.clone()), 
-            apu: APU::new(),
-            player_1: Controller::new(), 
-            player_2: Controller::new(), 
-            cartridge: cell, 
-            dma_signal: false 
+            ram:                Box::new([0; 0x0800]), 
+            ppu:                PPU::new(cell.clone()), 
+            apu:                APU::new(cell.clone()),
+            player_1:           Controller::new(), 
+            player_2:           Controller::new(), 
+            cartridge:          cell, 
+            transferring_oam:   false 
         }
     }
 
@@ -83,7 +83,7 @@ impl MemoryBus {
                 }
 
                 self.ppu.overwrite_oam(new_oam);
-                self.dma_signal = true;
+                self.transferring_oam = true;
             },
 
             0x4016          => {
@@ -98,7 +98,7 @@ impl MemoryBus {
         }
     }
 
-    pub fn stop_dma_signal(&mut self) {
-        self.dma_signal = false;
+    pub fn done_oam_transfer(&mut self) {
+        self.transferring_oam = false;
     }
 }
