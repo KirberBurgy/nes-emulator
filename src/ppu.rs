@@ -548,10 +548,16 @@ impl PPU {
     fn render_sprites(&mut self, bg_opaque: bool) {
         let current_x = self.cycle as usize;
 
+
+
         for i in 0..self.sprite_count {
             let x = self.sprite_xs[i] as usize;
             
             if current_x < x || current_x >= x + 8 { continue; }
+
+            if x < 8 && !bit_set(self.mask, PPUMaskFlags::ShowBorderSprites as usize) {
+                continue;
+            }
 
             let offset = current_x - x;
             let attr = self.sprite_attr[i];
@@ -652,21 +658,26 @@ impl PPU {
                     }
                 } 
                 else if bit_set(self.mask, PPUMaskFlags::EnableBg as usize) {
-                    let bit_pos = 15 - self.x as usize;
+                    if self.cycle <= 8 && !bit_set(self.mask, PPUMaskFlags::ShowBorderBg as usize) {
+                        self.palette_index = 0x3F00;
+                    }
+                    else {
+                        let bit_pos = 15 - self.x as usize;
 
-                    let pal_lo = bit_set(self.p_shift_lo, bit_pos) as u16;
-                    let pal_hi = bit_set(self.p_shift_hi, bit_pos) as u16;
+                        let pal_lo = bit_set(self.p_shift_lo, bit_pos) as u16;
+                        let pal_hi = bit_set(self.p_shift_hi, bit_pos) as u16;
 
-                    let attr_lo = bit_set(self.a_shift_lo, bit_pos) as u16;
-                    let attr_hi = bit_set(self.a_shift_hi, bit_pos) as u16;
+                        let attr_lo = bit_set(self.a_shift_lo, bit_pos) as u16;
+                        let attr_hi = bit_set(self.a_shift_hi, bit_pos) as u16;
 
-                    let pattern_bits = (pal_hi << 1) | pal_lo;
-                    let attribute_bits = (attr_hi << 1) | attr_lo;
+                        let pattern_bits = (pal_hi << 1) | pal_lo;
+                        let attribute_bits = (attr_hi << 1) | attr_lo;
 
-                    self.palette_index =
-                        0x3F00 |
-                        if pattern_bits == 0 { 0 }
-                        else { (attribute_bits << 2) | pattern_bits };
+                        self.palette_index =
+                            0x3F00 |
+                            if pattern_bits == 0 { 0 }
+                            else { (attribute_bits << 2) | pattern_bits };
+                    }
 
                     bg_opaque = self.palette_index != 0x3F00;
                 }
