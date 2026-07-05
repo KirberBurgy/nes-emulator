@@ -86,37 +86,36 @@ impl APUDMC {
     pub fn tick(&mut self) {
         if self.buffer_empty && self.remaining_samples > 0 {
             self.sample_buffer = self.cartridge.borrow_mut().prg_read(self.current_address);
-            self.transferring = true;
             self.buffer_empty = false;
-            
-            if self.current_address == 0xFFFF   { self.current_address = 0x8000;    } 
-            else                                { self.current_address += 1;        }
+            self.transferring = true;
+
+            if self.current_address == 0xFFFF {
+                self.current_address = 0x8000;
+            } else {
+                self.current_address += 1;
+            }
 
             self.remaining_samples -= 1;
 
             if self.remaining_samples == 0 {
                 if self.will_loop {
-                    self.remaining_samples = self.sample_length;
                     self.current_address = self.sample_address;
-                } 
-                else { 
-                    self.irq_pending = self.irq_enabled; 
+                    self.remaining_samples = self.sample_length;
+                } else if self.irq_enabled {
+                    self.irq_pending = true;
                 }
             }
         }
 
-        if self.timer != 0 {
+        if self.timer > 0 {
             self.timer -= 1;
-
             return;
         }
-
         self.timer = self.timer_reset;
 
         if !self.silence {
-            let will_add = bit_set(self.output_shifter, 0);
-
-            if will_add {
+            let bit = bit_set(self.output_shifter, 0);
+            if bit {
                 if self.output_level <= 125 { self.output_level += 2; }
             } else {
                 if self.output_level >= 2 { self.output_level -= 2; }
@@ -131,8 +130,7 @@ impl APUDMC {
             
             if self.buffer_empty {
                 self.silence = true;
-            } 
-            else {
+            } else {
                 self.silence = false;
                 self.output_shifter = self.sample_buffer;
                 self.buffer_empty = true;

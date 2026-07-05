@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use cpal::traits::{DeviceTrait, StreamTrait};
 use winit::event_loop::EventLoop;
 
 use crate::{audio_player::AudioPlayer, cartridge::Cartridge, nes::NES, renderer::Renderer};
@@ -42,9 +41,9 @@ impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.state.is_some() { return; }
 
-        let cart = Cartridge::load("tests/roms/The Legend of Zelda.nes").unwrap();
+        let cart = Cartridge::load("tests/roms/Super Mario Bros 3.nes").unwrap();
 
-
+        std::thread::sleep(std::time::Duration::from_secs(3));
         let mut state = AppState { 
             nes:                NES::new(cart),
             player:             AudioPlayer::new(),

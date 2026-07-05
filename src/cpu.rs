@@ -139,6 +139,17 @@ impl CPU {
         self.delay += self.jump_to_handler(bus, self.pc, 0xFFFE);
     }
 
+    pub fn try_jump_to_irq_handler(&mut self, bus: &mut MemoryBus) -> bool {
+        if self.flag_set(CPUFlags::InterruptDisable) {
+            false
+        }
+        else {
+            self.jump_to_irq_handler(bus);
+
+            true
+        }
+    }
+
     pub fn jump_to_startup(&mut self, bus: &mut MemoryBus) {
         self.pc = self.read16(bus, 0xFFFC);
         self.delay += 7;

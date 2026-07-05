@@ -1,4 +1,4 @@
-use crate::{bit_utils::bit_set, mapper::{Mapper, NametableMirroring}, mappers::mirrored_address};
+use crate::{mapper::{Mapper, NametableMirroring}, mappers::{fixed_mirroring, mirrored_address}};
 
 pub struct NROM {
     pub is_32k:     bool,
@@ -11,14 +11,10 @@ pub struct NROM {
 
 impl NROM {
     pub fn new(prg: Vec<u8>, chr: Vec<u8>, _prg_ram: Option<Vec<u8>>, header: &[u8; 0x10]) -> NROM {
-        let mirroring = 
-            if bit_set(header[6], 0) { NametableMirroring::Vertical }
-            else { NametableMirroring::Horizontal };
-
         NROM
         {
             is_32k:     prg.len() > 0x4000,
-            mirroring,
+            mirroring:  fixed_mirroring(header[6]),
             prg_rom:    prg,
             chr_rom:    chr,
             vram:       Box::new([0; 0x0800]),

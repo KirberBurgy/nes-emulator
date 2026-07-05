@@ -10,6 +10,9 @@ pub trait Mapper {
 
     fn vram_read(&mut self, addr: u16) -> u8;
     fn vram_write(&mut self, addr: u16, value: u8);
+
+    fn signaling_irq(&self) -> bool { false }
+    fn irq_acknowledged(&mut self) {}
 }
 
 #[derive(Copy, Clone, Debug)]

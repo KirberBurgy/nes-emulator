@@ -36,7 +36,7 @@ impl NES {
         self.cpu.jump_to_startup(&mut self.bus);
     }
 
-    pub fn tick(&mut self) {
+    pub fn try_jump_to_interrupts(&mut self) {
         if self.cpu.delay == 0 {
             if self.bus.ppu.signaling_nmi() {
                 self.cpu.jump_to_nmi_handler(&mut self.bus);
@@ -44,16 +44,28 @@ impl NES {
                 self.bus.ppu.disable_nmi_this_frame();
             }
             else if self.bus.apu.dmc.signaling_irq() {
-                self.cpu.jump_to_irq_handler(&mut self.bus);
-
-                self.bus.apu.dmc.disable_irq_until_next();
+                if self.cpu.try_jump_to_irq_handler(&mut self.bus) {
+                    self.bus.apu.dmc.disable_irq_until_next();
+                }
             }
             else if self.bus.apu.signaling_irq() {
-                self.cpu.jump_to_irq_handler(&mut self.bus);
+                if self.cpu.try_jump_to_irq_handler(&mut self.bus) {
+                    self.bus.apu.disable_irq_until_next();
+                }                
+            }
+            
+            let mapper_signalling = self.bus.cartridge.borrow().mapper.signaling_irq();
 
-                self.bus.apu.disable_irq_until_next();
+            if mapper_signalling {
+                if self.cpu.try_jump_to_irq_handler(&mut self.bus) {
+                    self.bus.cartridge.borrow_mut().mapper.irq_acknowledged();
+                }
             }
         }
+    }
+
+    pub fn tick(&mut self) {
+        self.try_jump_to_interrupts();
         
         self.cpu.tick(&mut self.bus);
         self.bus.apu.tick();

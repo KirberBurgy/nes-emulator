@@ -115,7 +115,12 @@ impl APU {
                 if !bit_set(self.status, APUStatus::Pulse2Enabled as usize)     { self.pulse_2.length_counter = 0;  }
                 if !bit_set(self.status, APUStatus::TriangleEnabled as usize)   { self.triangle.length_counter = 0; }
                 if !bit_set(self.status, APUStatus::NoiseEnabled as usize)      { self.noise.length_counter = 0;    }
+                
                 if !bit_set(self.status, APUStatus::DMCEnabled as usize)        { self.dmc.remaining_samples = 0;   }
+                else if self.dmc.remaining_samples == 0 {
+                    self.dmc.current_address = self.dmc.sample_address;
+                    self.dmc.remaining_samples = self.dmc.sample_length;
+                }
 
                 self.dmc.irq_pending = false;
             }

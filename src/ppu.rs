@@ -531,6 +531,18 @@ impl PPU {
             self.sprite_attr[i] = attribute;
             self.sprite_xs[i] = x;
         }
+
+        for _ in self.sprite_count..8 {
+            let dummy_addr = if tall_sprites {
+                0x1000 + (0xFF * 16)
+            } else {
+                let bank = if bit_set(self.control, PPUControlFlags::SpriteTableAddress as usize) { 0x1000 } else { 0x0000 };
+                bank + (0xFF * 16)
+            };
+
+            self.cart.borrow_mut().chr_read(dummy_addr);
+            self.cart.borrow_mut().chr_read(dummy_addr + 8);
+        }
     }
 
     fn render_sprites(&mut self, bg_opaque: bool) {
@@ -616,7 +628,7 @@ impl PPU {
                 }
 
                 if self.cycle == 338 || self.cycle == 340 {
-                    self.nt_byte = self.fetch_nametable_byte();
+                    self.fetch_nametable_byte();
                 }
                 
                 let mut bg_opaque = false;
