@@ -124,7 +124,7 @@ impl winit::application::ApplicationHandler for App {
             }
 
             winit::event::WindowEvent::RedrawRequested => {
-                state.renderer.upload_framebuffer(&state.nes.framebuffer);
+                state.renderer.upload_framebuffer(&state.nes.bus.ppu.framebuffer);
                 state.renderer.render();
             },
 

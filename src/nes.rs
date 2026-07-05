@@ -16,9 +16,7 @@ pub const NES_PALETTE: [(u8, u8, u8); 64] = [
 
 pub struct NES {
     pub cpu:            CPU,
-    pub bus:            MemoryBus,
-
-    pub framebuffer:    Box<[u8; 256 * 240]>
+    pub bus:            MemoryBus
 }
 
 impl NES {
@@ -26,9 +24,7 @@ impl NES {
         Self { 
             cpu: CPU::new(), 
 
-            bus: MemoryBus::new(cart), 
-            
-            framebuffer: Box::new([0; 256 * 240]) 
+            bus: MemoryBus::new(cart)
         }
     }
 
@@ -88,9 +84,9 @@ impl NES {
         }
 
         for _ in 0..3 {
-            
             self.bus.ppu.tick();
 
+            /*
             let scanline = self.bus.ppu.scanline;
             let cycle = self.bus.ppu.cycle;
 
@@ -102,6 +98,7 @@ impl NES {
 
                 self.framebuffer[index] = self.bus.ppu.pal_read(self.bus.ppu.palette_index);
             }
+            */
         }
     }
 }
