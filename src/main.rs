@@ -41,7 +41,7 @@ impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.state.is_some() { return; }
 
-        let cart = Cartridge::load("tests/roms/AccuracyCoin.nes").unwrap();
+        let cart = Cartridge::load("tests/roms/ppu_vbl_nmi.nes").unwrap();
 
         std::thread::sleep(std::time::Duration::from_secs(3));
         let mut state = AppState { 

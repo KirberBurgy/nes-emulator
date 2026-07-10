@@ -16,7 +16,8 @@ pub const NES_PALETTE: [(u8, u8, u8); 64] = [
 
 pub struct NES {
     pub cpu:            CPU,
-    pub bus:            MemoryBus
+    pub bus:            MemoryBus,
+    pub master_clock:   usize,
 }
 
 impl NES {
@@ -24,7 +25,9 @@ impl NES {
         Self { 
             cpu: CPU::new(), 
 
-            bus: MemoryBus::new(cart)
+            bus: MemoryBus::new(cart),
+
+            master_clock:   3
         }
     }
 
@@ -34,12 +37,7 @@ impl NES {
 
     pub fn try_jump_to_interrupts(&mut self) {
         if self.cpu.delay == 0 {
-            if self.bus.ppu.signaling_nmi() {
-                self.cpu.jump_to_nmi_handler(&mut self.bus);
-
-                self.bus.ppu.disable_nmi_this_frame();
-            }
-            else if self.bus.apu.dmc.signaling_irq() {
+            if self.bus.apu.dmc.signaling_irq() {
                 if self.cpu.try_jump_to_irq_handler(&mut self.bus) {
                     self.bus.apu.dmc.disable_irq_until_next();
                 }
@@ -61,44 +59,38 @@ impl NES {
     }
 
     pub fn tick(&mut self) {
-        self.try_jump_to_interrupts();
-        
-        self.cpu.tick(&mut self.bus);
-        self.bus.apu.tick();
+        if self.master_clock % 3 == 0 {
+            self.cpu.tick(&mut self.bus);
 
-        if self.bus.transferring_oam {
-            if (self.cpu.cycles - 1) % 2 == 0 {
-                self.cpu.delay += 513;
-            }
-            else {
-                self.cpu.delay += 514;
+            self.bus.apu.tick();
+
+            if self.bus.transferring_oam {
+                if (self.cpu.cycles - 1) % 2 == 0 {
+                    self.cpu.delay += 513;
+                }
+                else {
+                    self.cpu.delay += 514;
+                }
+
+                self.bus.done_oam_transfer();
             }
 
-            self.bus.done_oam_transfer();
+            if self.bus.apu.dmc.transferring {
+                self.cpu.delay += 4;
+
+                self.bus.apu.dmc.done_transferring();
+            }
+
+            self.try_jump_to_interrupts();
         }
 
-        if self.bus.apu.dmc.transferring {
-            self.cpu.delay += 4;
+        self.bus.ppu.tick();
+        if self.cpu.delay == 0 && self.bus.ppu.signaling_nmi() {
+            self.cpu.jump_to_nmi_handler(&mut self.bus);
 
-            self.bus.apu.dmc.done_transferring();
+            self.bus.ppu.disable_nmi_this_frame();
         }
 
-        for _ in 0..3 {
-            self.bus.ppu.tick();
-
-            /*
-            let scanline = self.bus.ppu.scanline;
-            let cycle = self.bus.ppu.cycle;
-
-            if scanline < 240 && (1..=256).contains(&cycle) {
-                let x = (cycle - 1) as usize; 
-                let y = scanline as usize;
-                
-                let index = x + y * 256;
-
-                self.framebuffer[index] = self.bus.ppu.pal_read(self.bus.ppu.palette_index);
-            }
-            */
-        }
+        self.master_clock += 1;
     }
 }

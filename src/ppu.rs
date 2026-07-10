@@ -84,7 +84,7 @@ mod ppu_instr {
                 }
 
                 if line == 261 {
-                    if cycle == 1 {
+                    if cycle == 2 {
                         flags |= CLEAR_STATUS;
                     }
 
@@ -256,7 +256,7 @@ impl PPU {
 
             palette_index:  0x3F00,
 
-            cycle:          0,
+            cycle:          341,
             scanline:       261,
 
             frame:          0,
@@ -371,13 +371,24 @@ impl PPU {
     pub fn ppustatus_read(&mut self) -> u8 {
         self.w = false;
         
-        let result = self.status;
+        let mut result = self.status;
         self.status = set_bit(self.status, PPUStatusFlags::VBlank as usize, false);
+
+        if self.scanline == 241 && self.cycle == 1 {
+            result = self.status;
+        }
 
         result
     }
 
     pub fn ppuctrl_write(&mut self, to: u8) {
+        if !bit_set(self.control, PPUControlFlags::NMIEnabled as usize) 
+        &&  bit_set(to,           PPUControlFlags::NMIEnabled as usize) 
+        &&  bit_set(self.status,  PPUStatusFlags::VBlank as usize) 
+        {
+            self.nmi_done = false;
+        }
+
         self.control = to;
         self.t = set_bits(self.t, 10..12, get_bits(to, 0..2) as u16);
     }
@@ -755,6 +766,21 @@ impl PPU {
     pub fn tick(&mut self) {
         use ppu_instr::*;
 
+        self.cycle += 1;
+
+        if self.cycle >= 341 {
+            self.cycle = 0;
+            self.scanline += 1;
+        }
+
+        if self.cycle == 340 && self.scanline == 260 {
+            self.frame += 1;
+        }
+
+        if self.scanline >= 262 {
+            self.scanline = 0;
+        }
+
         let rendering = self.rendering();
         let flags = PPU_INSTRUCTIONS[self.scanline][self.cycle];
 
@@ -804,19 +830,5 @@ impl PPU {
             }
         }
 
-        self.cycle += 1;
-
-        if self.cycle >= 341 {
-            self.cycle = 0;
-            self.scanline += 1;
-        }
-
-        if self.cycle == 340 && self.scanline == 260 {
-            self.frame += 1;
-        }
-
-        if self.scanline >= 262 {
-            self.scanline = 0;
-        }
     }
 }
