@@ -143,8 +143,8 @@ impl MMC3 {
             3 => self.chr_1kb_2 = value as usize,
             4 => self.chr_1kb_3 = value as usize,
             5 => self.chr_1kb_4 = value as usize,
-            6 => self.prg_8kb_1 = get_bits(value, 0..6) as usize,
-            7 => self.prg_8kb_2 = get_bits(value, 0..6) as usize,
+            6 => self.prg_8kb_1 = value as usize,
+            7 => self.prg_8kb_2 = value as usize,
 
             _ => unreachable!()
         }

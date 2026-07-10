@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{apu::APU, cartridge::Cartridge, controller::Controller, ppu::PPU};
+use crate::{apu::APU, bit_utils::set_bits, cartridge::Cartridge, controller::Controller, ppu::PPU};
 
 pub struct MemoryBus {
     pub ram:                Box<[u8; 0x0800]>,
@@ -12,7 +12,8 @@ pub struct MemoryBus {
     pub player_1:           Controller,
     pub player_2:           Controller,
     
-    pub transferring_oam:   bool
+    pub transferring_oam:   bool,
+    pub open_bus:           u8
 }
 
 impl MemoryBus {
@@ -27,20 +28,22 @@ impl MemoryBus {
             player_1:           Controller::new(), 
             player_2:           Controller::new(), 
             cartridge:          cell, 
-            transferring_oam:   false 
+            transferring_oam:   false,
+            open_bus:           0
         }
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
-        match addr {
+        // Hack, but it works.
+        self.open_bus = match addr {
             0x0000..0x2000  => self.ram[(addr % 0x0800) as usize],
 
             0x2000..0x4000  => match addr % 0x0008 {
-                0x0002 => self.ppu.ppustatus_read(),
+                0x0002 => set_bits(self.ppu.ppustatus_read(), 0..5, self.open_bus),
                 0x0004 => self.ppu.oamdata_read(),
                 0x0007 => self.ppu.ppudata_read(),
 
-                _ => unreachable!()
+                _ => self.open_bus
             },
 
             0x4015          => self.apu.read(addr),
@@ -51,8 +54,10 @@ impl MemoryBus {
             0x6000..0x8000  => self.cartridge.borrow_mut().prg_ram_read(addr),
             0x8000..        => self.cartridge.borrow_mut().prg_read(addr),
 
-            _ => 0 
-        }
+            _ => self.open_bus
+        };
+
+        self.open_bus
     }
 
     pub fn write(&mut self, addr: u16, value: u8) {
@@ -68,7 +73,7 @@ impl MemoryBus {
                 0x0006 => self.ppu.ppuaddr_write(value),
                 0x0007 => self.ppu.ppudata_write(value),
 
-                _ => unreachable!()
+                _ => {}
             },
 
             0x4000..0x4014  |

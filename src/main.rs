@@ -41,7 +41,7 @@ impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.state.is_some() { return; }
 
-        let cart = Cartridge::load("tests/roms/The Legend of Zelda.nes").unwrap();
+        let cart = Cartridge::load("tests/roms/AccuracyCoin.nes").unwrap();
 
         std::thread::sleep(std::time::Duration::from_secs(3));
         let mut state = AppState { 
@@ -54,8 +54,9 @@ impl winit::application::ApplicationHandler for App {
 
         state.nes.reset();
         state.player.play();
+        state.player.volume = 0.05;
 
-        const N: u32 = 3;
+        const N: u32 = 4;
 
         state.renderer.window.set_min_inner_size(Some(winit::dpi::Size::Physical(winit::dpi::PhysicalSize::new(256, 240))));
         let _ = state.renderer.window.request_inner_size(winit::dpi::Size::Physical(winit::dpi::PhysicalSize::new(256 * N, 240 * N)));
